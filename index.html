@@ -1906,6 +1906,21 @@ async function loadAssignmentsFromServer(){
     }
     renderAssignmentList();
     try{ initCustomScrollbars(); }catch(e){}
+
+    // Reconciliation: if a local assignment for this team never made it
+    // to the server (e.g. a push that silently failed in the past due
+    // to a schema mismatch), re-push it now. Self-healing — no manual
+    // recreation needed once the underlying issue is fixed.
+    var serverIds = data.map(function(row){ return row.id; });
+    var localAssignments = await dbGetAll('assignments');
+    for(var k=0; k<localAssignments.length; k++){
+      var la = localAssignments[k];
+      var belongsToMyTeam = (la.teamId || userTeamId) === userTeamId;
+      if(belongsToMyTeam && serverIds.indexOf(la.id) === -1){
+        console.log('[Assignments] Re-pushing local-only assignment that never synced:', la.id);
+        await pushAssignmentToServer(la);
+      }
+    }
   } catch(e){ console.warn('[Assignments] load error:', e.message); }
 }
 
