@@ -571,6 +571,25 @@ html,body{height:100%;overflow:hidden}
   .scroll::-webkit-scrollbar-thumb{background:#b0c4de;border-radius:4px;border:2px solid transparent;background-clip:content-box}
   .scroll::-webkit-scrollbar-thumb:hover{background:#7a9ac0}
 }
+
+/* ── Custom visible scroll slider ── */
+/* A clearly visible, draggable slider on the right edge of any .scroll
+   container — guarantees the person can always see and use it to reach
+   content below the fold, regardless of the browser's native scrollbar
+   behaviour (which can be invisible/overlay on some systems). */
+.custom-scrollbar-track{
+  position:absolute; top:0; right:2px; bottom:100px; width:6px;
+  background:rgba(120,140,180,.12); border-radius:4px;
+  z-index:20; pointer-events:none; transition:opacity .2s;
+}
+.custom-scrollbar-track.visible{ pointer-events:auto; }
+.custom-scrollbar-thumb{
+  position:absolute; left:0; width:100%; border-radius:4px;
+  background:var(--accent2); opacity:.55; cursor:grab;
+  transition:opacity .15s, background .15s;
+}
+.custom-scrollbar-thumb:hover, .custom-scrollbar-thumb.dragging{ opacity:.9; }
+.custom-scrollbar-thumb.dragging{ cursor:grabbing; }
 </style>
 </head>
 <body>
@@ -4759,8 +4778,101 @@ function setM4(category, field, val){
 }
 
 // ══ INIT ═══════════════════════════════════════════════════════════════════
+// ══ CUSTOM VISIBLE SCROLL SLIDER ═════════════════════════════════════════════
+// Adds an unmistakably visible, draggable slider to every scrollable screen,
+// so content below the fold is always reachable — independent of whatever
+// the browser's native scrollbar happens to look like.
+function initCustomScrollbars(){
+  document.querySelectorAll('.scroll').forEach(function(scrollEl){
+    if(scrollEl._sliderInit) return; // avoid double-init
+    scrollEl._sliderInit = true;
+
+    var parent = scrollEl.parentElement;
+    if(!parent) return;
+
+    var track = document.createElement('div');
+    track.className = 'custom-scrollbar-track';
+    var thumb = document.createElement('div');
+    thumb.className = 'custom-scrollbar-thumb';
+    track.appendChild(thumb);
+    parent.appendChild(track);
+
+    function layout(){
+      var trackHeight = scrollEl.clientHeight;
+      track.style.top    = scrollEl.offsetTop + 'px';
+      track.style.height = trackHeight + 'px';
+      track.style.bottom = 'auto';
+
+      var overflow = scrollEl.scrollHeight - scrollEl.clientHeight;
+      if(overflow <= 4 || scrollEl.clientHeight === 0){
+        track.classList.remove('visible');
+        track.style.display = 'none';
+        return;
+      }
+      track.style.display = 'block';
+      track.classList.add('visible');
+
+      var thumbHeight = Math.max(30, trackHeight * (scrollEl.clientHeight/scrollEl.scrollHeight));
+      var thumbTop = (scrollEl.scrollTop/overflow) * (trackHeight-thumbHeight);
+      thumb.style.height = thumbHeight+'px';
+      thumb.style.top    = thumbTop+'px';
+    }
+
+    scrollEl.addEventListener('scroll', layout, { passive:true });
+    window.addEventListener('resize', layout);
+    try{
+      new ResizeObserver(layout).observe(scrollEl);
+    }catch(e){ setInterval(layout, 1000); } // fallback for very old browsers
+
+    // Drag the thumb
+    var dragging=false, startY=0, startScrollTop=0;
+    function onMove(clientY){
+      var trackHeight = scrollEl.clientHeight;
+      var thumbHeight = thumb.offsetHeight;
+      var overflow = scrollEl.scrollHeight - scrollEl.clientHeight;
+      var deltaY = clientY - startY;
+      var deltaScroll = (deltaY / (trackHeight-thumbHeight)) * overflow;
+      scrollEl.scrollTop = Math.max(0, Math.min(overflow, startScrollTop + deltaScroll));
+    }
+    function stopDrag(){
+      dragging=false;
+      thumb.classList.remove('dragging');
+      document.body.style.userSelect='';
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', stopDrag);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', stopDrag);
+    }
+    function onMouseMove(e){ onMove(e.clientY); }
+    function onTouchMove(e){ if(e.touches[0]) onMove(e.touches[0].clientY); }
+    function startDrag(clientY){
+      dragging=true; startY=clientY; startScrollTop=scrollEl.scrollTop;
+      thumb.classList.add('dragging');
+      document.body.style.userSelect='none';
+    }
+    thumb.addEventListener('mousedown', function(e){ e.preventDefault(); startDrag(e.clientY);
+      window.addEventListener('mousemove', onMouseMove);
+      window.addEventListener('mouseup', stopDrag);
+    });
+    thumb.addEventListener('touchstart', function(e){ if(e.touches[0]) startDrag(e.touches[0].clientY);
+      window.addEventListener('touchmove', onTouchMove, { passive:true });
+      window.addEventListener('touchend', stopDrag);
+    }, { passive:true });
+
+    // Click on the track (not the thumb) jumps to that position
+    track.addEventListener('click', function(e){
+      if(e.target === thumb) return;
+      var rect = track.getBoundingClientRect();
+      var clickRatio = (e.clientY - rect.top) / rect.height;
+      var overflow = scrollEl.scrollHeight - scrollEl.clientHeight;
+      scrollEl.scrollTop = clickRatio * overflow;
+    });
+
+    layout();
+  });
+}
+
 async function init(){
-  // Initialise Supabase
   try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storage: authStorage, persistSession: true, autoRefreshToken: true } }); } catch(e){ console.warn('Supabase init failed:', e); }
 
   // Check for existing session
@@ -4780,6 +4892,7 @@ async function init(){
   try { db=await openDB(); } catch(e){ console.warn('IndexedDB failed:',e); }
   try { updateConnStatus(); } catch(e){}
   try { renderHomeVisits(); } catch(e){}
+  try { initCustomScrollbars(); } catch(e){ console.warn('Scroll slider init failed:', e); }
 
   // Service worker
   try {
