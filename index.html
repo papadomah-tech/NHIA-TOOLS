@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <meta name="apple-mobile-web-app-title" content="NHIA Monitor"/>
-<meta name="theme-color" content="#0f2027"/>
+<meta name="theme-color" content="#1A8C5B"/>
 <title>NHIA Provider Monitor</title>
 <link rel="manifest" href="manifest.json"/>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -14,22 +14,22 @@
 <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet"/>
 <style>
 :root {
-  --ink:       #0f2027;
-  --ink2:      #1a3040;
-  --surface:   #162535;
-  --card:      #1e3248;
-  --border:    #2a4560;
+  --ink:       #f0f4ff;
+  --ink2:      #e4ecff;
+  --surface:   #f8faff;
+  --card:      #ffffff;
+  --border:    #dde5f5;
   --accent:    #1A8C5B;
   --accent2:   #22b573;
-  --gold:      #D4AC0D;
-  --gold2:     #f0c92a;
-  --red:       #e05252;
-  --amber:     #e09052;
-  --text:      #e8edf2;
-  --muted:     #7a9ab5;
+  --gold:      #c49a00;
+  --gold2:     #e6b800;
+  --red:       #d63031;
+  --amber:     #e07020;
+  --text:      #0f1f3a;
+  --muted:     #5a6e90;
   --radius:    16px;
   --radius-sm: 10px;
-  --shadow:    0 8px 32px rgba(0,0,0,0.4);
+  --shadow:    0 4px 20px rgba(26,58,107,0.10);
   --trans:     0.2s cubic-bezier(.4,0,.2,1);
 }
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
@@ -136,7 +136,7 @@ html,body{height:100%;overflow:hidden}
 .topbar-action{font-size:12px;color:var(--accent2);font-weight:600;cursor:pointer;padding:6px 10px;border-radius:8px;background:rgba(34,181,115,.12);border:none;white-space:nowrap}
 
 /* ── Scroll content ── */
-.scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 16px 100px;scrollbar-width:thin;scrollbar-color:#5a7a9a transparent}
+.scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding:0 16px 100px;scrollbar-width:thin;scrollbar-color:#b0c4de transparent}
 .scroll::-webkit-scrollbar{display:none}
 
 /* ── Cards ── */
@@ -284,7 +284,7 @@ html,body{height:100%;overflow:hidden}
 .btn-secondary{background:var(--card);border:1px solid var(--border);color:var(--text)}
 .btn-secondary:active{background:var(--surface)}
 .btn-danger{background:rgba(224,82,82,.12);border:1px solid rgba(224,82,82,.3);color:var(--red)}
-.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:var(--ink);box-shadow:0 6px 20px rgba(212,172,13,.3)}
+.btn-gold{background:linear-gradient(135deg,var(--gold),var(--gold2));color:#fff;box-shadow:0 6px 20px rgba(196,154,0,.25)}
 .btn-gold:active{transform:scale(.97)}
 .btn+.btn{margin-top:10px}
 .btn:disabled{opacity:.4;cursor:not-allowed}
@@ -554,7 +554,7 @@ html,body{height:100%;overflow:hidden}
   #app{border-left:1px solid var(--border);border-right:1px solid var(--border)}
   .scroll::-webkit-scrollbar{display:block;width:8px}
   .scroll::-webkit-scrollbar-track{background:rgba(255,255,255,.04)}
-  .scroll::-webkit-scrollbar-thumb{background:#5a7a9a;border-radius:4px;border:2px solid transparent;background-clip:content-box}
+  .scroll::-webkit-scrollbar-thumb{background:#b0c4de;border-radius:4px;border:2px solid transparent;background-clip:content-box}
   .scroll::-webkit-scrollbar-thumb:hover{background:#7a9ac0}
 }
 </style>
@@ -1121,7 +1121,7 @@ html,body{height:100%;overflow:hidden}
 <!-- ══ LOGIN OVERLAY ══════════════════════════════════════════════════════ -->
 <div id="login-overlay" style="
   position:fixed;inset:0;z-index:9999;
-  background:#0a1628;
+  background:linear-gradient(160deg,#1a3a6b 0%,#1A8C5B 100%);
   display:flex;align-items:center;justify-content:center;padding:20px;">
   <div style="
     background:#fff;border-radius:20px;padding:36px 28px;
