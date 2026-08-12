@@ -3948,7 +3948,7 @@ async function closeAssignment(){
 }
 
 // ── Render assignment list on home screen ─────────────────────────────
-async function computeAssignmentCardHtml(a){
+async function computeAssignmentCardHtml(a, showDelete){
   var total  = a.visitIds.length + (a.doVisitId?1:0);
   var closed = 0;
   for(var j=0; j<a.visitIds.length; j++){
@@ -3961,8 +3961,12 @@ async function computeAssignmentCardHtml(a){
   }
   var pct = total ? Math.round(closed/total*100) : 0;
   var statusColor = a.status==='closed' ? '#e05050' : 'var(--accent2)';
-  return '<div data-aid="' + a.id + '" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;cursor:pointer">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+  var deleteBtn = showDelete
+    ? '<button data-delaid="' + a.id + '" style="position:absolute;top:12px;right:14px;background:rgba(224,80,80,.12);border:1px solid rgba(224,80,80,.3);border-radius:6px;width:26px;height:26px;color:#e05050;font-size:13px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center" title="Delete assignment">&#128465;</button>'
+    : '';
+  return '<div data-aid="' + a.id + '" style="position:relative;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;cursor:pointer">'
+    + deleteBtn
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;padding-right:' + (showDelete?'32px':'0') + '">'
     + '<div style="font-size:14px;font-weight:700;color:var(--text)">' + a.teamName + '</div>'
     + '<div style="font-size:10px;font-weight:700;color:' + statusColor + ';text-transform:uppercase">' + a.status + '</div>'
     + '</div>'
@@ -4038,10 +4042,12 @@ async function renderAllAssignments(){
   assignments.sort(function(a,b){ return b.createdAt-a.createdAt; });
   var html = '';
   for(var i=0; i<assignments.length; i++){
-    html += await computeAssignmentCardHtml(assignments[i]);
+    html += await computeAssignmentCardHtml(assignments[i], true);
   }
   el.innerHTML = html;
   el.onclick = function(e){
+    var delBtn = e.target.closest('[data-delaid]');
+    if(delBtn){ e.stopPropagation(); deleteAssignment(delBtn.getAttribute('data-delaid'), true).then(renderAllAssignments); return; }
     var card = e.target.closest('[data-aid]');
     if(card) openAssignment(card.getAttribute('data-aid'));
   };
@@ -4281,7 +4287,7 @@ async function deleteDOVisit(doVisitId, fromAssignment){
   }
 }
 
-async function deleteAssignment(assignmentId){
+async function deleteAssignment(assignmentId, skipNav){
   var a = await dbGet('assignments', assignmentId);
   if(!a) return;
   var msg = 'Delete "'+a.teamName+'" and ALL its facility visits and DO visit? This cannot be undone.';
@@ -4305,7 +4311,7 @@ async function deleteAssignment(assignmentId){
   }
   if(currentAssignment && currentAssignment.id === assignmentId) currentAssignment = null;
   showToast('Assignment deleted','success');
-  goHome();
+  if(!skipNav) goHome();
 }
 
 
