@@ -211,6 +211,8 @@ html,body{height:100%;overflow:hidden}
 .module-item:active{background:var(--surface)}
 .module-item.complete{border-color:rgba(34,181,115,.3)}
 .module-item.na{opacity:.5}
+.module-item.locked{border-color:rgba(224,80,80,.4);background:rgba(224,80,80,.05)}
+.module-item.locked .module-sub{color:var(--red);font-weight:600}
 .module-num{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex-shrink:0;font-family:'JetBrains Mono',monospace}
 .module-info{flex:1;min-width:0}
 .module-title{font-size:13px;font-weight:600;color:var(--text)}
@@ -1410,7 +1412,17 @@ function openDB(){
   });
 }
 function dbGet(store,key){if(!db)return Promise.resolve(null);return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).get(key);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){res(null);}});}
-function dbPut(store,val){if(!db)return Promise.resolve(val);return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readwrite');const r=tx.objectStore(store).put(val);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){res(val);}});}
+function dbPut(store,val){if(!db)return Promise.resolve(val);
+  // Dirty-module tracking: whenever the current visit is saved while a
+  // module screen is actively open, record that module as needing sync.
+  // This lets uploads send only the module(s) this device actually
+  // touched, so concurrent officers on different modules never clobber
+  // each other's data (see merge_visit_modules RPC).
+  if(store==='visits' && val && val.id && currentModuleId && currentVisit && val.id===currentVisit.id){
+    if(!val._dirtyModules) val._dirtyModules=[];
+    if(val._dirtyModules.indexOf(currentModuleId)===-1) val._dirtyModules.push(currentModuleId);
+  }
+  return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readwrite');const r=tx.objectStore(store).put(val);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){res(val);}});}
 function dbDel(store,key){if(!db)return Promise.resolve();return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readwrite');const r=tx.objectStore(store).delete(key);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);}catch(e){res();}});}
 function dbGetAll(store){if(!db)return Promise.resolve([]);return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);}catch(e){res([]); }});}
 
@@ -1438,11 +1450,13 @@ function showScreen(id, direction='forward'){
 }
 function goBack(){
   if(screenStack.length>1){
+    const leaving = screenStack[screenStack.length-1];
+    if(leaving==='module'){ currentModuleId=null; releaseModulePresence(); }
     const prev=screenStack[screenStack.length-2];
     showScreen(prev,'back');
   }
 }
-function goHome(){screenStack=['home'];showScreen('home','back');}
+function goHome(){currentModuleId=null; releaseModulePresence(); screenStack=['home'];showScreen('home','back');}
 
 // ══ CONNECTIVITY ═══════════════════════════════════════════════════════════
 function updateConnStatus(){
@@ -1517,7 +1531,7 @@ async function doLogout(){
 
 function subscribeRealtime(){
   sb.channel('nhia-v79')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'visits' }, function(payload){
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'visit_syncs' }, function(payload){
       // Merge incoming visit data into local IndexedDB
       var remote = payload.new;
       if(!remote || !remote.visit_id) return;
@@ -1554,8 +1568,84 @@ function subscribeRealtime(){
     .subscribe();
 }
 
-// ══ SUPABASE SYNC ══════════════════════════════════════════════════════════
-var _syncInProgress = false;
+// ══ LIVE PRESENCE & MODULE LOCKING ═══════════════════════════════════════════
+// Uses Supabase Realtime Presence (websocket-only, no DB writes) so teammates
+// see who's on which module instantly, without hitting the sync cadence.
+// A module is "locked" while someone else is actively viewing/editing it —
+// first person in gets it; others see "In progress by <name>" and can't enter.
+var presenceChannel = null;
+var presenceVisitId = null;
+var presenceState = {}; // { moduleId: {userId, name, ts} } — other users only
+var PRESENCE_STALE_MS = 3 * 60 * 1000; // treat a lock as stale after 3 min (device likely dropped offline)
+
+function myDisplayName(){
+  return (settings.defaultMonitor || (currentUser && currentUser.email) || 'Teammate').trim();
+}
+
+function joinVisitPresence(visitId){
+  if(!sb || !currentUser || !visitId) return;
+  if(presenceChannel && presenceVisitId === visitId) return; // already joined this visit
+  leaveVisitPresence();
+  presenceVisitId = visitId;
+  presenceChannel = sb.channel('presence-visit-'+visitId, { config: { presence: { key: currentUser.id } } });
+
+  function syncState(){
+    var raw = presenceChannel.presenceState();
+    var map = {};
+    Object.keys(raw).forEach(function(userId){
+      if(userId === currentUser.id) return; // exclude self — self-lock never blocks self
+      var entries = raw[userId] || [];
+      entries.forEach(function(p){
+        if(p && p.module_id) map[p.module_id] = { userId: userId, name: p.name || 'Teammate', ts: p.ts || Date.now() };
+      });
+    });
+    presenceState = map;
+    if(screenStack[screenStack.length-1] === 'modules') renderModuleList();
+  }
+
+  presenceChannel
+    .on('presence', { event: 'sync' }, syncState)
+    .on('presence', { event: 'join' }, syncState)
+    .on('presence', { event: 'leave' }, syncState)
+    .subscribe(function(status){
+      if(status === 'SUBSCRIBED'){
+        presenceChannel.track({ module_id: null, name: myDisplayName(), ts: Date.now() });
+      }
+    });
+}
+
+function leaveVisitPresence(){
+  if(presenceChannel){
+    try { sb.removeChannel(presenceChannel); } catch(e){}
+  }
+  presenceChannel = null;
+  presenceVisitId = null;
+  presenceState = {};
+}
+
+var _presenceHeartbeat = null;
+function claimModulePresence(moduleId){
+  if(presenceChannel) presenceChannel.track({ module_id: moduleId, name: myDisplayName(), ts: Date.now() });
+  if(_presenceHeartbeat) clearInterval(_presenceHeartbeat);
+  _presenceHeartbeat = setInterval(function(){
+    if(presenceChannel && currentModuleId===moduleId) presenceChannel.track({ module_id: moduleId, name: myDisplayName(), ts: Date.now() });
+  }, 60000); // refresh every 60s so a genuinely-active lock never goes stale
+}
+
+function releaseModulePresence(){
+  if(_presenceHeartbeat){ clearInterval(_presenceHeartbeat); _presenceHeartbeat=null; }
+  if(presenceChannel) presenceChannel.track({ module_id: null, name: myDisplayName(), ts: Date.now() });
+}
+
+// Returns the lock info if moduleId is actively held by someone else, or null.
+function getModuleLock(moduleId){
+  var lock = presenceState[moduleId];
+  if(!lock) return null;
+  if(Date.now() - lock.ts > PRESENCE_STALE_MS) return null; // stale — treat as free
+  return lock;
+}
+
+
 
 async function syncNow(){
   await runSync(true);
@@ -1590,26 +1680,29 @@ async function runSync(showFeedback){
     for(var vi=0; vi<pending.length; vi++){
       var visit = pending[vi];
       try {
-        var payload = buildSyncPayload(visit);
-        // Upsert to Supabase visit_syncs table
-        var { error: sbErr } = await sb.from('visit_syncs').upsert({
-          visit_id:   visit.id,
-          team_id:    userTeamId,
-          synced_by:  currentUser.id,
-          setup:      payload.setup,
-          modules:    payload.modules,
-          scores:     payload.scores,
-          summary:    payload.summary,
-          device_id:  payload.deviceId,
-          synced_at:  new Date().toISOString(),
-        }, { onConflict: 'visit_id' });
+        var dirtyIds = (visit._dirtyModules && visit._dirtyModules.length) ? visit._dirtyModules : null;
+        var payload = buildSyncPayload(visit, dirtyIds);
+        // Atomic server-side merge — only touches the module(s) this
+        // device actually edited, so a concurrent teammate's sync on a
+        // different module can never be overwritten.
+        var { error: sbErr } = await sb.rpc('merge_visit_modules', {
+          p_visit_id:    visit.id,
+          p_team_id:     userTeamId,
+          p_synced_by:   currentUser.id,
+          p_setup:       payload.setup,
+          p_new_modules: payload.modules,
+          p_scores:      payload.scores,
+          p_summary:     payload.summary,
+          p_device_id:   payload.deviceId,
+        });
 
         if(!sbErr){
           visit.syncedAt     = Date.now();
           visit.lastModified = visit.lastModified || Date.now();
+          visit._dirtyModules = [];
           await dbPut('visits', visit);
           synced++;
-          console.log('[Sync] Visit', visit.id, 'synced to Supabase OK');
+          console.log('[Sync] Visit', visit.id, 'synced to Supabase OK (modules:', dirtyIds || 'all', ')');
         } else {
           console.warn('[Sync] Supabase error for visit', visit.id, sbErr.message);
         }
@@ -1635,14 +1728,14 @@ async function runSync(showFeedback){
   }
 }
 
-function buildSyncPayload(visit){
-  var modules = visit.modules || {};
+function buildSyncPayload(visit, onlyModuleIds){
+  var allModules = visit.modules || {};
   var scores  = {};
   var pType   = visit.setup && visit.setup.providerType ? visit.setup.providerType : '';
 
-  // Score all 6 modules
+  // Score all 6 modules (used for the full-visit summary rollup below)
   MODULES.forEach(function(m){
-    var modData = modules[m.id];
+    var modData = allModules[m.id];
     if(modData && modData.responses && Object.keys(modData.responses).length){
       scores[m.id] = calcModuleScore(m, modData, pType);
     } else {
@@ -1650,13 +1743,29 @@ function buildSyncPayload(visit){
     }
   });
 
-  // Overall — only from modules that have data
+  // Overall — always computed from this device's full local picture,
+  // even when only uploading a subset of modules below.
   var totalScore=0, totalMax=0;
   Object.keys(scores).forEach(function(mid){
     var s = scores[mid];
     if(s && s !== 'N/A'){ totalScore+=s.score; totalMax+=s.max; }
   });
   var overall = totalMax ? Math.round(totalScore/totalMax*100) : 0;
+
+  // Restrict the uploaded modules/scores to only what this device actually
+  // edited (onlyModuleIds), so the server-side merge never touches modules
+  // another officer owns. Falls back to sending everything for older
+  // visits that predate dirty-tracking.
+  var uploadModules = allModules;
+  var uploadScores   = scores;
+  if(onlyModuleIds && onlyModuleIds.length){
+    uploadModules = {};
+    uploadScores  = {};
+    onlyModuleIds.forEach(function(mid){
+      if(allModules[mid] !== undefined) uploadModules[mid] = allModules[mid];
+      if(scores[mid]      !== undefined) uploadScores[mid]  = scores[mid];
+    });
+  }
 
   // Device identifier for the Sheet "Last Device" column
   var deviceId = (settings.defaultMonitor || 'unknown').trim()
@@ -1667,8 +1776,8 @@ function buildSyncPayload(visit){
     deviceId:   deviceId,
     syncedAt:   new Date().toISOString(),
     setup:      visit.setup   || {},
-    modules:    modules,
-    scores:     scores,
+    modules:    uploadModules,
+    scores:     uploadScores,
     summary:    {overall:overall, totalScore:totalScore, totalMax:totalMax},
     emailTo:    settings.email || '',
     obsSheet:   visit.obsSheet || {},
@@ -1718,13 +1827,15 @@ function triggerBackgroundSync(){
   }, 500);
 }
 
-// 3. Periodic push+pull every 3 minutes while app is open and online
+// 3. Periodic push+pull every 25 seconds while app is open and online
+//    (dirty-module tracking keeps each push small — only the module(s)
+//    this device actually edited get uploaded)
 setInterval(function(){
   if(!navigator.onLine || !currentUser || _syncInProgress) return;
   runSync(false).then(function(){
     setTimeout(function(){ pullAllFromSheets(); }, 3000);
   });
-}, 3 * 60 * 1000);
+}, 25 * 1000);
 
 // 4. SHORT POLL: pull every 30 seconds while modules screen is open
 //    This ensures each device sees teammates' work in near-real-time
@@ -1876,6 +1987,8 @@ async function openVisit(id){
 // ══ MODULE NAV ═════════════════════════════════════════════════════════════
 function showModules(){
   if(!currentVisit)return;
+  // Live presence — see teammates' locks on this visit in real time
+  joinVisitPresence(currentVisit.id);
   // Start 30-second polling while modules screen is open
   startSyncPolling();
   // Immediate pull to get latest data as soon as modules screen opens
@@ -1900,11 +2013,15 @@ function renderModuleList(){
     const {score,max,pct}=calcModuleScore(m,currentVisit.modules&&currentVisit.modules[m.id],(currentVisit.setup&&currentVisit.setup.providerType)||'');
     const ratingCls=pct>=80?'sat':pct>=60?'imp':'unsat';
     const done=max>0&&allIndicatorsFilled(m,currentVisit.modules&&currentVisit.modules[m.id]);
-    return `<div class="module-item${done?' complete':''}${na?' na':''}" onclick="${na?"showToast('Module 6 applies to CHPS/Health Centres only','error')":"openModule('"+m.id+"')"}">
+    const lock=na?null:getModuleLock(m.id);
+    const clickAction=na?"showToast('Module 6 applies to CHPS/Health Centres only','error')"
+      :lock?"showToast('🔒 In progress by "+lock.name.replace(/'/g,"\\'")+"','error')"
+      :"openModule('"+m.id+"')";
+    return `<div class="module-item${done?' complete':''}${na?' na':''}${lock?' locked':''}" onclick="${clickAction}">
       <div class="module-num" style="background:${m.color}22;color:${m.color}">M${m.num}</div>
       <div class="module-info">
         <div class="module-title">${m.title}</div>
-        <div class="module-sub">${na?'N/A for this provider type':done?'✓ Complete':'Tap to assess'}</div>
+        <div class="module-sub">${na?'N/A for this provider type':lock?'🔒 In progress by '+lock.name:done?'✓ Complete':'Tap to assess'}</div>
       </div>
       <div class="module-score">
         <div class="module-score-val" style="color:${na?'var(--muted)':pct>=80?'var(--accent2)':pct>=60?'var(--amber)':'var(--red)'}">${na?'N/A':score+'/'+max}</div>
@@ -1956,7 +2073,13 @@ function calcModuleScore(module, data, providerType){
 
 // ══ MODULE SCREEN ══════════════════════════════════════════════════════════
 function openModule(id){
+  var lock = getModuleLock(id);
+  if(lock){
+    showToast('🔒 In progress by '+lock.name,'error');
+    return;
+  }
   currentModuleId=id;
+  claimModulePresence(id);
   const m=MODULES.find(x=>x.id===id);
   document.getElementById('mod-title').textContent='Module '+m.num;
   document.getElementById('mod-sub').textContent=m.title;
