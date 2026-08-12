@@ -1767,10 +1767,15 @@ async function pushAssignmentToServer(assignment){
 }
 
 async function loadAssignmentsFromServer(){
-  if(!sb || !currentUser || !userTeamId) return;
+  if(!sb || !currentUser || !userTeamId){
+    console.warn('[Assignments] Skipped load — sb:', !!sb, 'currentUser:', !!currentUser, 'userTeamId:', userTeamId);
+    return;
+  }
   try {
     var { data, error } = await sb.from('assignments').select('*').eq('team_id', userTeamId);
-    if(error || !data) return;
+    if(error){ console.warn('[Assignments] Supabase query error:', error.message, error); return; }
+    if(!data){ console.warn('[Assignments] No data returned (null)'); return; }
+    console.log('[Assignments] Loaded', data.length, 'assignment(s) for team', userTeamId);
     if(!db){ try{ db=await openDB(); }catch(e){ db=null; } }
     if(!db) return;
 
