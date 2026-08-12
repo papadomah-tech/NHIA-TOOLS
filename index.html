@@ -2202,6 +2202,7 @@ async function saveSetup(){
     }
   }
   showModules();
+  triggerBackgroundSync();
 }
 
 async function openVisit(id){
@@ -3568,12 +3569,25 @@ async function pullFromSheets(visitId){
   try {
     var { data: remote, error } = await sb.from('visit_syncs').select('*').eq('visit_id', visitId).single();
     if(error || !remote){ console.log('[Pull] Not in Supabase yet:', visitId); return; }
-    if(!remote.modules || Object.keys(remote.modules).length === 0) return;
 
     var local = await dbGet('visits', visitId);
     if(!local){ local = { id:visitId, setup:remote.setup||{}, modules:{}, createdAt:Date.now() }; }
 
     var changed = false;
+
+    // Always pick up setup info (facility name/type/etc.) even if no
+    // module data has been entered yet — a stub shouldn't stay
+    // "Unnamed Facility" forever just because nobody has started
+    // answering module questions.
+    if(remote.setup && Object.keys(remote.setup).length){
+      var hasLocalSetup = local.setup && Object.keys(local.setup).length;
+      if(!hasLocalSetup){
+        local.setup = remote.setup;
+        changed = true;
+      }
+    }
+
+    if(remote.modules && Object.keys(remote.modules).length){
     Object.keys(remote.modules).forEach(function(mid){
       var remMod = remote.modules[mid];
       if(!remMod || !remMod.responses) return;
@@ -3596,6 +3610,7 @@ async function pullFromSheets(visitId){
       });
       if(changed) local.modules[mid] = locMod;
     });
+    }
 
     if(changed){
       local.pulledAt = Date.now();
