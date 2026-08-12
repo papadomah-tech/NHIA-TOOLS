@@ -1138,6 +1138,10 @@ html,body{height:100%;overflow:hidden}
         style="width:100%;padding:10px 14px;border:1.5px solid #d0d8ee;border-radius:8px;font-size:.9rem;font-family:'Sora',sans-serif;outline:none"
         onkeydown="if(event.key==='Enter')doLogin()"/>
     </div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <input type="checkbox" id="login-remember" style="width:16px;height:16px;cursor:pointer;accent-color:#1a3a6b"/>
+      <label for="login-remember" style="font-size:.8rem;color:#6b7a99;cursor:pointer;user-select:none">Remember me on this device</label>
+    </div>
     <div id="login-error" style="color:#c0392b;font-size:.8rem;min-height:20px;margin-bottom:8px"></div>
     <button onclick="doLogin()" style="
       width:100%;padding:12px;background:#1a3a6b;color:#fff;
@@ -1354,6 +1358,37 @@ const MODULES = [
 // ══ SUPABASE CONFIG ════════════════════════════════════════════════════════
 const SUPABASE_URL = 'https://ukgowgggsitzqfwcjtlk.supabase.co';
 const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVrZ293Z2dnc2l0enFmd2NqdGxrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY0ODE4MTAsImV4cCI6MjEwMjA1NzgxMH0.auzD0JYQm0iFGC_enj6HSPaYaAegvnG-dzDS-GAeNP0';
+
+// ══ REMEMBER-ME AUTH STORAGE ═══════════════════════════════════════════════
+// Default is OFF: sessions live in sessionStorage (cleared when the app/tab is
+// fully closed) unless the user ticks "Remember me", which routes storage to
+// localStorage (survives app restarts).
+const REMEMBER_KEY = 'nhia_remember_pref';
+function isRememberOn(){ try { return localStorage.getItem(REMEMBER_KEY) === 'true'; } catch(e){ return false; } }
+const authStorage = {
+  getItem: function(key){
+    try { return isRememberOn() ? localStorage.getItem(key) : sessionStorage.getItem(key); }
+    catch(e){ return null; }
+  },
+  setItem: function(key, value){
+    try {
+      if(isRememberOn()){ localStorage.setItem(key, value); sessionStorage.removeItem(key); }
+      else { sessionStorage.setItem(key, value); localStorage.removeItem(key); }
+    } catch(e){}
+  },
+  removeItem: function(key){
+    try { localStorage.removeItem(key); sessionStorage.removeItem(key); } catch(e){}
+  }
+};
+// One-time cleanup: purge any Supabase session left in localStorage from
+// before this fix, so pre-existing installs stop auto-logging in.
+try {
+  if(!isRememberOn()){
+    Object.keys(localStorage).forEach(function(k){
+      if(k.indexOf('sb-') === 0) localStorage.removeItem(k);
+    });
+  }
+} catch(e){}
 let sb = null;
 let currentUser = null, userRole = null, userTeamId = null;
 
@@ -1441,9 +1476,14 @@ window.addEventListener('offline',updateConnStatus);
 async function doLogin(){
   const email = document.getElementById('login-email').value.trim();
   const pass  = document.getElementById('login-password').value;
+  const remember = document.getElementById('login-remember').checked;
   const errEl = document.getElementById('login-error');
   errEl.textContent = '';
   if(!email || !pass){ errEl.textContent = 'Enter your email and password.'; return; }
+
+  // Must be set BEFORE signInWithPassword so the auth storage adapter
+  // routes the new session to the right place (local vs session storage).
+  try { localStorage.setItem(REMEMBER_KEY, remember ? 'true' : 'false'); } catch(e){}
 
   const { data, error } = await sb.auth.signInWithPassword({ email, password: pass });
   if(error){ errEl.textContent = error.message; return; }
@@ -1474,6 +1514,9 @@ async function afterLogin(user){
 async function doLogout(){
   await sb.auth.signOut();
   currentUser = null; userRole = null; userTeamId = null;
+  try { localStorage.removeItem(REMEMBER_KEY); } catch(e){}
+  var rememberBox = document.getElementById('login-remember');
+  if(rememberBox) rememberBox.checked = false;
   document.getElementById('login-overlay').style.display = 'flex';
 }
 
@@ -4455,7 +4498,7 @@ function setM4(category, field, val){
 // ══ INIT ═══════════════════════════════════════════════════════════════════
 async function init(){
   // Initialise Supabase
-  try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY); } catch(e){ console.warn('Supabase init failed:', e); }
+  try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, { auth: { storage: authStorage, persistSession: true, autoRefreshToken: true } }); } catch(e){ console.warn('Supabase init failed:', e); }
 
   // Check for existing session
   try {
