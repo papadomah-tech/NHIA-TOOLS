@@ -826,6 +826,22 @@ html,body{height:100%;overflow:hidden}
   </div>
 </div>
 
+<!-- Signature Pad modal -->
+<div class="modal-overlay" id="modal-signature-pad" onclick="if(event.target===this)closeModal('modal-signature-pad')">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Draw Your Signature</div>
+      <button class="modal-close" onclick="closeModal('modal-signature-pad')">&#10005;</button></div>
+    <div style="border:1.5px solid var(--border);border-radius:8px;overflow:hidden;background:#fff">
+      <canvas id="sig-canvas" style="width:100%;height:180px;touch-action:none;display:block"></canvas>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center">Draw with your finger or mouse</div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn" style="width:auto;flex:1" onclick="clearSignaturePad()">Clear</button>
+      <button class="btn btn-primary" style="width:auto;flex:1" onclick="saveSignaturePad()">Save Signature</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ ALL ASSIGNMENTS ═══════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-all-assignments">
   <div class="topbar">
@@ -1330,6 +1346,15 @@ html,body{height:100%;overflow:hidden}
       <input type="url" id="s-app-url" placeholder="https://papadomah-tech.github.io/papadomah-apps/index.html"/>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5">Enter the public HTTPS URL where this app is hosted. Used to generate shareable visit links for teammates. Leave blank if you have not deployed the app online yet.</div>
     </div>
+    <div class="field">
+      <label>My Signature</label>
+      <div id="sig-preview-box" style="border:1.5px solid var(--border);border-radius:8px;padding:10px;min-height:70px;display:flex;align-items:center;justify-content:center;background:#fff">
+        <div id="sig-preview-empty" style="color:var(--muted);font-size:12px">No signature saved yet</div>
+        <img id="sig-preview-img" style="display:none;max-height:60px;max-width:100%"/>
+      </div>
+      <button class="btn" style="width:100%;margin-top:8px" onclick="openSignaturePad()">✍️ Draw / Update Signature</button>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5">Saved once and reused automatically on every Report and Observation Sheet you generate, wherever your name appears as a signatory.</div>
+    </div>
     <button class="btn btn-primary" onclick="saveSettings()">Save Settings</button>
     <button class="btn" onclick="doLogout()" style="width:100%;margin-top:10px;background:rgba(192,57,43,.1);color:#c0392b;border:1px solid rgba(192,57,43,.3)">Sign Out</button>
   </div>
@@ -1667,6 +1692,7 @@ async function doLogin(){
 async function afterLogin(user){
   currentUser = user;
   await refreshMyProfile();
+  await loadMySignature();
 
   // Update settings default monitor name from profile
   const { data: profile } = await sb.from('user_profiles').select('display_name').eq('id', user.id).single();
@@ -3647,13 +3673,13 @@ function saveObsSheet(){
   showToast('Observation sheet saved','success');
 }
 
-function printObsSheet(){
+async function printObsSheet(){
   saveObsSheet();
-  var html = buildObsPrintHtml();
+  var html = await buildObsPrintHtml();
   doPrint(html);
 }
 
-function buildObsPrintHtml(){
+async function buildObsPrintHtml(){
   if(!currentVisit) return '';
   var s   = currentVisit.setup   || {};
   var obs = currentVisit.obsSheet || {};
@@ -3708,16 +3734,18 @@ function buildObsPrintHtml(){
 
   // Facility Response rows
   var respText = obs.facilityResponse || '';
+  var repSig = obs.repName ? await getSignatureForName(obs.repName) : null;
+  var tlSig  = s.leadMonitor ? await getSignatureForName(s.leadMonitor) : null;
   rows += '<tr><td colspan="4" style="border:1px solid #ccc;padding:8px 6px;font-weight:700">8. Facility Response:</td></tr>'
         + '<tr><td colspan="4" style="border:1px solid #ccc;padding:10px;min-height:80px;font-size:11px;white-space:pre-wrap;line-height:1.6">' + (respText||'&nbsp;\n&nbsp;\n&nbsp;\n&nbsp;') + '</td></tr>'
         + '<tr><td colspan="4" style="border:1px solid #ccc;padding:10px;font-size:11px;line-height:2">'
         + 'I confirm that the findings have been discussed with me and I have provided responses where necessary.<br>'
         + 'Name: <u>' + pad(obs.repName,40) + '</u> &nbsp; Designation: <u>' + pad(obs.repDesig,25) + '</u><br>'
-        + 'Signature: _________________________ &nbsp; Date: <u>' + pad(obs.repDate,20) + '</u> &nbsp; Contact: <u>' + pad(obs.repContact,20) + '</u>'
+        + 'Signature: ' + sigInlineOrBlank(repSig) + ' &nbsp; Date: <u>' + pad(obs.repDate,20) + '</u> &nbsp; Contact: <u>' + pad(obs.repContact,20) + '</u>'
         + '</td></tr>'
         + '<tr><td colspan="4" style="border:1px solid #ccc;padding:10px;font-size:11px;line-height:2">'
         + '<strong>9. NHIA M&amp;E Team Leader:</strong><br>'
-        + 'Name: <u>' + pad(s.leadMonitor,35) + '</u> &nbsp; Signature: _________________________ &nbsp; Date: <u>' + pad(obs.tlDate,15) + '</u><br>'
+        + 'Name: <u>' + pad(s.leadMonitor,35) + '</u> &nbsp; Signature: ' + sigInlineOrBlank(tlSig) + ' &nbsp; Date: <u>' + pad(obs.tlDate,15) + '</u><br>'
         + 'Contact: <u>' + pad(obs.tlContact,30) + '</u>'
         + '</td></tr>';
 
@@ -4889,7 +4917,131 @@ function openSettings(){
   document.getElementById('s-default-region').value=settings.defaultRegion||'';
   document.getElementById('s-email').value=settings.email||'';
   document.getElementById('s-app-url').value=settings.appUrl||'https://nhia-tools.vercel.app';
+  updateSignaturePreview();
   document.getElementById('settings-overlay').classList.add('open');
+}
+
+// ══ DIGITAL SIGNATURES ═══════════════════════════════════════════════════
+// Each person draws their signature once (in Settings); it's saved to their
+// own profile on Supabase and automatically embedded on every Report and
+// Observation Sheet wherever their name appears as a signatory — matched
+// by display name, not by who happens to be logged in when a document is
+// generated, so a Team Leader's signature shows up correctly even if an
+// Admin is the one who triggers the report.
+var mySignatureData = null;
+var sigCtx = null, sigDrawing = false, sigHasDrawn = false;
+var _signatureCache = {}; // name (lowercased) -> data URI or null, per session
+
+async function loadMySignature(){
+  if(!sb || !currentUser) return;
+  try {
+    var { data } = await sb.from('user_profiles').select('signature_data').eq('id', currentUser.id).single();
+    mySignatureData = (data && data.signature_data) || null;
+    updateSignaturePreview();
+  } catch(e){}
+}
+
+function updateSignaturePreview(){
+  var img = document.getElementById('sig-preview-img');
+  var empty = document.getElementById('sig-preview-empty');
+  if(!img || !empty) return;
+  if(mySignatureData){
+    img.src = mySignatureData;
+    img.style.display = '';
+    empty.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    empty.style.display = '';
+  }
+}
+
+function openSignaturePad(){
+  openModal('modal-signature-pad');
+  setTimeout(initSignatureCanvas, 60); // wait for the modal's open transition to finish sizing
+}
+
+function initSignatureCanvas(){
+  var canvas = document.getElementById('sig-canvas');
+  if(!canvas) return;
+  var rect = canvas.getBoundingClientRect();
+  var dpr = window.devicePixelRatio || 1;
+  canvas.width  = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  sigCtx = canvas.getContext('2d');
+  sigCtx.scale(dpr, dpr);
+  sigCtx.lineWidth = 2.4;
+  sigCtx.lineCap = 'round';
+  sigCtx.lineJoin = 'round';
+  sigCtx.strokeStyle = '#1a2340';
+  sigHasDrawn = false;
+
+  function getPos(e){
+    var r = canvas.getBoundingClientRect();
+    var cx = e.touches ? e.touches[0].clientX : e.clientX;
+    var cy = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: cx - r.left, y: cy - r.top };
+  }
+  function start(e){ e.preventDefault(); sigDrawing = true; var p = getPos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }
+  function move(e){ if(!sigDrawing) return; e.preventDefault(); var p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); sigHasDrawn = true; }
+  function end(){ sigDrawing = false; }
+
+  canvas.onmousedown = start; canvas.onmousemove = move; canvas.onmouseup = end; canvas.onmouseleave = end;
+  canvas.ontouchstart = start; canvas.ontouchmove = move; canvas.ontouchend = end;
+}
+
+function clearSignaturePad(){
+  var canvas = document.getElementById('sig-canvas');
+  if(!canvas || !sigCtx) return;
+  sigCtx.clearRect(0, 0, canvas.width, canvas.height);
+  sigHasDrawn = false;
+}
+
+async function saveSignaturePad(){
+  if(!sigHasDrawn){ showToast('Please draw your signature first','error'); return; }
+  if(!sb || !currentUser){ showToast('Not signed in','error'); return; }
+  var canvas = document.getElementById('sig-canvas');
+  var dataUrl = canvas.toDataURL('image/png');
+  var { error } = await sb.rpc('save_my_signature', { p_signature_data: dataUrl });
+  if(error){ showToast('Failed to save: '+error.message,'error'); return; }
+  mySignatureData = dataUrl;
+  _signatureCache[myDisplayName().trim().toLowerCase()] = dataUrl;
+  closeModal('modal-signature-pad');
+  updateSignaturePreview();
+  showToast('Signature saved','success');
+}
+
+// Looks up a saved signature by display name — checks the current user
+// first (no network call needed), then a per-session cache, then falls
+// back to a server lookup. Returns a data URI, or null if nobody with
+// that name has saved a signature.
+async function getSignatureForName(name){
+  if(!name || !name.trim()) return null;
+  var key = name.trim().toLowerCase();
+  if(currentUser && myDisplayName().trim().toLowerCase() === key) return mySignatureData;
+  if(key in _signatureCache) return _signatureCache[key];
+  if(!sb) return null;
+  try {
+    var { data, error } = await sb.rpc('get_signature_by_name', { p_name: name.trim() });
+    var sig = (!error && data && data.length) ? (data[0].signature_data || null) : null;
+    _signatureCache[key] = sig;
+    return sig;
+  } catch(e){ return null; }
+}
+
+// For the Report's boxed signature style — an image sitting in the blank
+// space above the signing line, or nothing (falls back to the blank line)
+// if no saved signature was found.
+function sigImgForBox(dataUri){
+  if(!dataUri) return '';
+  return '<img src="'+dataUri+'" style="max-height:42px;max-width:85%;display:block;margin:4px auto -46px;position:relative"/>';
+}
+
+// For the Observation Sheet's inline "Signature: ____" style — replaces
+// the blank underscores with a small inline signature image when found.
+function sigInlineOrBlank(dataUri){
+  return dataUri
+    ? '<img src="'+dataUri+'" style="height:22px;vertical-align:middle;max-width:150px"/>'
+    : '_________________________';
 }
 
 function closeSettings(e){
@@ -5962,11 +6114,17 @@ async function generateReport() {
   const preparerName = uniqueCoMonitors.length ? uniqueCoMonitors.join(' / ') : '__________________';
   const teamLeader   = allVisits.map(v => (v.setup&&v.setup.leadMonitor)).filter(Boolean)[0] || '__________________';
 
+  // Only look up a signature when there's exactly one clear name to match —
+  // a joined "Name1 / Name2" list or the blank placeholder can't map to a
+  // single saved signature.
+  const preparerSig   = (uniqueCoMonitors.length === 1) ? await getSignatureForName(uniqueCoMonitors[0]) : null;
+  const teamLeaderSig = (teamLeader !== '__________________') ? await getSignatureForName(teamLeader) : null;
+
   html += '<div class="rpt-signature-row">'
-        + '<div class="rpt-sig-box"><div class="rpt-sig-line">Prepared by</div>'
+        + '<div class="rpt-sig-box">' + sigImgForBox(preparerSig) + '<div class="rpt-sig-line">Prepared by</div>'
         + '<div class="rpt-sig-label">' + preparerName + '</div>'
         + '<div class="rpt-sig-title">Monitoring Officer(s)</div></div>'
-        + '<div class="rpt-sig-box"><div class="rpt-sig-line">Reviewed &amp; Approved by</div>'
+        + '<div class="rpt-sig-box">' + sigImgForBox(teamLeaderSig) + '<div class="rpt-sig-line">Reviewed &amp; Approved by</div>'
         + '<div class="rpt-sig-label">' + teamLeader + '</div>'
         + '<div class="rpt-sig-title">M&amp;E Team Leader, ' + region + ' Regional Office</div></div>'
         + '</div>';
@@ -6633,7 +6791,7 @@ function buildCleanReportHtml(bodyContent){
 }
 
 // ── District Office Report Generator ─────────────────────────────────
-function generateDOReport(){
+async function generateDOReport(){
   if(!currentDOVisit){ showToast('No district office visit open','error'); return; }
   const v  = currentDOVisit;
   const s  = v.setup||{};
@@ -6861,11 +7019,13 @@ function generateDOReport(){
   // SIGNATURES
   const preparers = [s.member2,s.member3].filter(Boolean);
   const preparerName = preparers.length?preparers.join(' / '):'__________________';
+  const doPreparerSig    = (preparers.length === 1) ? await getSignatureForName(preparers[0]) : null;
+  const doTeamLeaderSig  = s.leadMonitor ? await getSignatureForName(s.leadMonitor) : null;
   html += '<div class="rpt-signature-row">'
-        + '<div class="rpt-sig-box"><div class="rpt-sig-line">Prepared by</div>'
+        + '<div class="rpt-sig-box">' + sigImgForBox(doPreparerSig) + '<div class="rpt-sig-line">Prepared by</div>'
         + '<div class="rpt-sig-label">'+preparerName+'</div>'
         + '<div class="rpt-sig-title">Monitoring Officer(s)</div></div>'
-        + '<div class="rpt-sig-box"><div class="rpt-sig-line">Reviewed &amp; Approved by</div>'
+        + '<div class="rpt-sig-box">' + sigImgForBox(doTeamLeaderSig) + '<div class="rpt-sig-line">Reviewed &amp; Approved by</div>'
         + '<div class="rpt-sig-label">'+(s.leadMonitor||'__________________')+'</div>'
         + '<div class="rpt-sig-title">M&amp;E Team Leader, '+(s.region||'')+'</div></div>'
         + '</div>';
