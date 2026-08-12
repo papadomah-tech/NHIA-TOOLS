@@ -1595,9 +1595,11 @@ async function doLogin(){
 
 async function afterLogin(user){
   currentUser = user;
-  const { data: profile } = await sb.from('user_profiles').select('role,team_id,display_name').eq('id', user.id).single();
+  const { data: profile, error: profileErr } = await sb.from('user_profiles').select('role,team_id,display_name').eq('id', user.id).single();
+  console.log('[Login] user.id:', user.id, '| profile:', profile, '| error:', profileErr);
   userRole   = profile?.role   || 'member';
   userTeamId = profile?.team_id || null;
+  console.log('[Login] resolved userRole:', userRole, '| userTeamId:', userTeamId);
 
   // Fetch this user's team name (e.g. "Team Sekondi") for the home screen header
   userTeamName = '';
