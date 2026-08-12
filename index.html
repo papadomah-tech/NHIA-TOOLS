@@ -656,6 +656,7 @@ html,body{height:100%;overflow:hidden}
     <div class="sync-bar">
       <div class="sync-dot" id="sync-dot"></div>
       <span class="sync-text" id="sync-text">Checking connection…</span>
+      <button class="sync-btn" id="refresh-now-btn" onclick="forceFullRefresh()" title="Re-fetch everything from the server and re-push all local data" style="margin-right:6px">&#8635; Refresh</button>
       <button class="sync-btn" id="sync-now-btn" onclick="syncNow()">Sync Now</button>
     </div>
     <button onclick="generateReport()" style="margin-top:12px;width:100%;background:rgba(212,172,13,.12);border:1px solid rgba(212,172,13,.35);border-radius:10px;padding:10px 16px;color:var(--gold);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
@@ -1812,6 +1813,8 @@ function applyRoleUI(){
   if(fab)  fab.style.display  = (isLeader||isAdmin) ? '' : 'none';
   var adminSection = document.getElementById('sb-admin-section');
   if(adminSection) adminSection.style.display = isAdmin ? '' : 'none';
+  var assignDeleteBtn = document.getElementById('assign-delete-btn');
+  if(assignDeleteBtn) assignDeleteBtn.style.display = (isLeader||isAdmin) ? '' : 'none';
 }
 
 // ── Team Assignments: server sync ────────────────────────────────────────
@@ -1928,6 +1931,63 @@ async function loadAssignmentsFromServer(){
 
 async function syncNow(){
   await runSync(true);
+}
+
+// Full manual refresh: unlike Sync Now (which only pushes visits with
+// unsynced local changes), this force-repushes EVERY local visit
+// regardless of its syncedAt status. That matters because a visit's
+// server row remembers whatever team_id was current on the device at
+// the moment it last synced — if that device's team assignment has
+// since changed, the server row can be stuck with a stale team_id that
+// silently hides it from teammates via RLS. Re-pushing with the
+// device's current, correct team_id fixes that. Also refreshes this
+// user's own profile/team/assignments and pulls fresh visit data.
+async function forceFullRefresh(){
+  if(!navigator.onLine){ showToast('You are offline — connect to refresh','error'); return; }
+  if(!currentUser){ return; }
+  var btn = document.getElementById('refresh-now-btn');
+  if(btn){ btn.disabled = true; btn.textContent = '⟳ Refreshing…'; }
+  updateSyncDot('syncing');
+  try {
+    await refreshMyProfile(); // re-fetches role/team/team name/assignments
+
+    var visits = await dbGetAll('visits');
+    var pushed = 0;
+    for(var i=0; i<visits.length; i++){
+      var visit = visits[i];
+      try {
+        var payload = buildSyncPayload(visit, null); // null = send everything this device knows, not just dirty modules
+        var { error: sbErr } = await sb.rpc('merge_visit_modules', {
+          p_visit_id:    visit.id,
+          p_team_id:     userTeamId,
+          p_synced_by:   currentUser.id,
+          p_setup:       payload.setup,
+          p_new_modules: payload.modules,
+          p_scores:      payload.scores,
+          p_summary:     payload.summary,
+          p_device_id:   payload.deviceId,
+        });
+        if(!sbErr){
+          visit.syncedAt = Date.now();
+          visit.lastModified = visit.lastModified || Date.now();
+          visit._dirtyModules = [];
+          await dbPut('visits', visit);
+          pushed++;
+        }
+      } catch(e){ console.warn('[Refresh] push failed for', visit.id, e.message); }
+    }
+
+    await pullAllFromSheets();
+    renderHomeVisits();
+    updateSyncDot('online');
+    showToast('Refreshed — ' + pushed + ' visit(s) re-synced', 'success');
+  } catch(e){
+    console.warn('[Refresh] failed:', e.message);
+    showToast('Refresh failed: ' + e.message, 'error');
+    updateSyncDot('online');
+  } finally {
+    if(btn){ btn.disabled = false; btn.innerHTML = '&#8635; Refresh'; }
+  }
 }
 
 async function runSync(showFeedback){
@@ -2190,6 +2250,7 @@ async function saveSetup(){
     member2:document.getElementById('f-member2').value.trim(),
     member3:document.getElementById('f-member3').value.trim(),
   };
+  currentVisit.lastModified = Date.now();
   await dbPut('visits',currentVisit);
   // Register with parent assignment so it shows under the assignment, not standalone
   if(currentVisit.assignmentId){
@@ -3856,11 +3917,12 @@ async function renderAssignmentVisits(){
         var vName   = v.setup && v.setup.providerName ? v.setup.providerName : 'Unnamed Facility';
         var vType   = v.setup && v.setup.providerType ? v.setup.providerType : '';
         var vColor  = vPct>=80 ? 'var(--accent2)' : vPct>=60 ? 'var(--gold)' : 'var(--red)';
+        var canDelete = userRole !== 'member';
         var buttons = a.status==='open'
           ? '<div style="display:flex;flex-direction:column;gap:4px">'
             + '<button data-vid="' + v.id + '" data-act="open" style="background:rgba(34,181,115,.1);border:1px solid rgba(34,181,115,.3);border-radius:8px;padding:5px 10px;color:var(--accent2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Open</button>'
             + (!vClosed ? '<button data-vid="' + v.id + '" data-act="close" style="background:rgba(224,80,80,.1);border:1px solid rgba(224,80,80,.3);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>' : '')
-            + '<button data-vid="' + v.id + '" data-act="delete" style="background:transparent;border:1px solid rgba(224,80,80,.2);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#128465; Delete</button>'
+            + (canDelete ? '<button data-vid="' + v.id + '" data-act="delete" style="background:transparent;border:1px solid rgba(224,80,80,.2);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#128465; Delete</button>' : '')
             + '</div>'
           : '<button data-vid="' + v.id + '" data-act="open" style="background:rgba(34,181,115,.1);border:1px solid rgba(34,181,115,.3);border-radius:8px;padding:5px 10px;color:var(--accent2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">View</button>';
         return '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;display:flex;align-items:center;gap:12px">'
@@ -3897,7 +3959,7 @@ async function renderAssignmentVisits(){
             ? '<div style="font-size:10px;color:var(--accent2);font-weight:700">&#10003; Closed</div>'
             : (a.status==='open'
               ? '<div style="display:flex;gap:4px"><button data-dovid="' + doVisit.id + '" data-act="close-do" style="background:rgba(224,80,80,.1);border:1px solid rgba(224,80,80,.3);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>'
-                + '<button data-dovid="' + doVisit.id + '" data-act="delete-do" style="background:transparent;border:1px solid rgba(224,80,80,.2);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#128465;</button></div>'
+                + (userRole!=='member' ? '<button data-dovid="' + doVisit.id + '" data-act="delete-do" style="background:transparent;border:1px solid rgba(224,80,80,.2);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#128465;</button>' : '') + '</div>'
               : '<div style="font-size:10px;color:var(--muted)">Open</div>'))
           + '</div>';
         doEl.onclick = function(e){
@@ -4107,7 +4169,7 @@ async function renderAllAssignments(){
   assignments.sort(function(a,b){ return b.createdAt-a.createdAt; });
   var html = '';
   for(var i=0; i<assignments.length; i++){
-    html += await computeAssignmentCardHtml(assignments[i], true);
+    html += await computeAssignmentCardHtml(assignments[i], userRole !== 'member');
   }
   el.innerHTML = html;
   el.onclick = function(e){
@@ -4309,6 +4371,7 @@ function buildTeamReportHtml(assignment, visits, doVisit){
 // DELETE VISIT / ASSIGNMENT
 // ══════════════════════════════════════════════════════════════════════
 async function deleteVisit(visitId, fromAssignment){
+  if(userRole === 'member'){ showToast('Only Team Leaders and Admins can delete visits','error'); return; }
   if(!confirm('Delete this visit permanently? This cannot be undone.')) return;
   var v = await dbGet('visits', visitId);
   // If it belongs to an assignment, remove the reference there too
@@ -4333,6 +4396,7 @@ async function deleteVisit(visitId, fromAssignment){
 }
 
 async function deleteDOVisit(doVisitId, fromAssignment){
+  if(userRole === 'member'){ showToast('Only Team Leaders and Admins can delete visits','error'); return; }
   if(!confirm('Delete this District Office visit permanently? This cannot be undone.')) return;
   var dv = await dbGet('do_visits', doVisitId);
   if(dv && dv.assignmentId){
@@ -4353,6 +4417,7 @@ async function deleteDOVisit(doVisitId, fromAssignment){
 }
 
 async function deleteAssignment(assignmentId, skipNav){
+  if(userRole === 'member'){ showToast('Only Team Leaders and Admins can delete assignments','error'); return; }
   var a = await dbGet('assignments', assignmentId);
   if(!a) return;
   var msg = 'Delete "'+a.teamName+'" and ALL its facility visits and DO visit? This cannot be undone.';
@@ -4678,6 +4743,7 @@ function renderAdminTeams(teams, profiles){
 }
 
 async function adminDeleteTeam(teamId, teamName){
+  if(userRole !== 'admin'){ showToast('Only Admins can delete teams','error'); return; }
   if(!sb) return;
   var { data: assignmentsForTeam } = await sb.from('assignments').select('id').eq('team_id', teamId);
   if(assignmentsForTeam && assignmentsForTeam.length){
