@@ -1530,6 +1530,12 @@ function dbPut(store,val){if(!db)return Promise.resolve(val);
     if(!val._dirtyModules) val._dirtyModules=[];
     if(val._dirtyModules.indexOf(currentModuleId)===-1) val._dirtyModules.push(currentModuleId);
   }
+  // Same idea for District Office visits — dirty-section tracking so a
+  // sync only ever uploads the section this device actually edited.
+  if(store==='do_visits' && val && val.id && currentDOSectionId && currentDOVisit && val.id===currentDOVisit.id){
+    if(!val._dirtySections) val._dirtySections=[];
+    if(val._dirtySections.indexOf(currentDOSectionId)===-1) val._dirtySections.push(currentDOSectionId);
+  }
   // Assignment sync: any local create/edit of an assignment (by a Team
   // Leader) pushes to Supabase so the whole team sees it, not just this
   // device. loadAssignmentsFromServer() uses dbPutRaw() below instead,
@@ -1571,11 +1577,12 @@ function goBack(){
   if(screenStack.length>1){
     const leaving = screenStack[screenStack.length-1];
     if(leaving==='module'){ currentModuleId=null; releaseModulePresence(); }
+    if(leaving==='do-section'){ currentDOSectionId=null; }
     const prev=screenStack[screenStack.length-2];
     showScreen(prev,'back');
   }
 }
-function goHome(){currentModuleId=null; releaseModulePresence(); screenStack=['home']; showScreen('home','back');}
+function goHome(){currentModuleId=null; currentDOSectionId=null; releaseModulePresence(); screenStack=['home']; showScreen('home','back');}
 
 // ══ CONNECTIVITY ═══════════════════════════════════════════════════════════
 function updateConnStatus(){
@@ -1894,16 +1901,27 @@ async function loadAssignmentsFromServer(){
       }
       // Hydrate any visits this device doesn't have locally yet, so a
       // teammate who joins an Admin- or leader-created assignment can
-      // immediately see the facility visits inside it.
+      // immediately see the facility visits inside it. Also retry for
+      // stubs that already exist locally but never got their setup data
+      // (e.g. created before the visit's setup had synced yet) — this
+      // makes stale "Unnamed Facility" placeholders self-heal on the
+      // next login instead of staying stuck until someone remembers to
+      // tap Refresh.
       var allVisitIds = (incoming.visitIds||[]).slice();
       if(incoming.doVisitId) allVisitIds.push(incoming.doVisitId);
       for(var j=0; j<allVisitIds.length; j++){
         var vid = allVisitIds[j];
-        var storeGuess = (incoming.doVisitId===vid) ? 'do_visits' : 'visits';
+        var isDO = (incoming.doVisitId===vid);
+        var storeGuess = isDO ? 'do_visits' : 'visits';
         var existing = await dbGet(storeGuess, vid);
         if(!existing){
-          await dbPutRaw(storeGuess, { id: vid, createdAt: Date.now(), setup:{}, modules:{}, assignmentId: incoming.id });
-          if(navigator.onLine) pullFromSheets(vid);
+          var stub = isDO
+            ? { id: vid, createdAt: Date.now(), setup:{}, sections:{}, assignmentId: incoming.id }
+            : { id: vid, createdAt: Date.now(), setup:{}, modules:{}, assignmentId: incoming.id };
+          await dbPutRaw(storeGuess, stub);
+          if(navigator.onLine){ isDO ? pullDOFromSheets(vid) : pullFromSheets(vid); }
+        } else if(navigator.onLine && (!existing.setup || Object.keys(existing.setup).length === 0)){
+          isDO ? pullDOFromSheets(vid) : pullFromSheets(vid);
         }
       }
     }
@@ -1977,6 +1995,31 @@ async function forceFullRefresh(){
       } catch(e){ console.warn('[Refresh] push failed for', visit.id, e.message); }
     }
 
+    var doVisits = await dbGetAll('do_visits');
+    for(var k=0; k<doVisits.length; k++){
+      var doVisit = doVisits[k];
+      try {
+        var doPayload = buildDOSyncPayload(doVisit, null);
+        var { error: doErr } = await sb.rpc('merge_visit_modules', {
+          p_visit_id:    doVisit.id,
+          p_team_id:     userTeamId,
+          p_synced_by:   currentUser.id,
+          p_setup:       doPayload.setup,
+          p_new_modules: doPayload.modules,
+          p_scores:      doPayload.scores,
+          p_summary:     doPayload.summary,
+          p_device_id:   doPayload.deviceId,
+        });
+        if(!doErr){
+          doVisit.syncedAt = Date.now();
+          doVisit.lastModified = doVisit.lastModified || Date.now();
+          doVisit._dirtySections = [];
+          await dbPut('do_visits', doVisit);
+          pushed++;
+        }
+      } catch(e){ console.warn('[Refresh] DO push failed for', doVisit.id, e.message); }
+    }
+
     await pullAllFromSheets();
     renderHomeVisits();
     updateSyncDot('online');
@@ -2008,12 +2051,12 @@ async function runSync(showFeedback){
       return v.lastModified > v.syncedAt;                   // modified since last sync
     });
 
-    if(!pending.length){
-      if(showFeedback) showToast('All visits already synced ✓','success');
-      updateSyncDot('online');
-      _syncInProgress = false;
-      return;
-    }
+    var doVisits = await dbGetAll('do_visits');
+    var pendingDO = doVisits.filter(function(v){
+      if(!v.syncedAt) return true;
+      if(!v.lastModified) return true;
+      return v.lastModified > v.syncedAt;
+    });
 
     var synced = 0;
     for(var vi=0; vi<pending.length; vi++){
@@ -2047,6 +2090,36 @@ async function runSync(showFeedback){
         }
       } catch(e) {
         console.warn('[Sync] Failed for visit', visit.id, e.message);
+      }
+    }
+
+    for(var di=0; di<pendingDO.length; di++){
+      var doVisit = pendingDO[di];
+      try {
+        var dirtySecIds = (doVisit._dirtySections && doVisit._dirtySections.length) ? doVisit._dirtySections : null;
+        var doPayload = buildDOSyncPayload(doVisit, dirtySecIds);
+        var { error: doErr } = await sb.rpc('merge_visit_modules', {
+          p_visit_id:    doVisit.id,
+          p_team_id:     userTeamId,
+          p_synced_by:   currentUser.id,
+          p_setup:       doPayload.setup,
+          p_new_modules: doPayload.modules,
+          p_scores:      doPayload.scores,
+          p_summary:     doPayload.summary,
+          p_device_id:   doPayload.deviceId,
+        });
+        if(!doErr){
+          doVisit.syncedAt      = Date.now();
+          doVisit.lastModified  = doVisit.lastModified || Date.now();
+          doVisit._dirtySections = [];
+          await dbPut('do_visits', doVisit);
+          synced++;
+          console.log('[Sync] DO visit', doVisit.id, 'synced to Supabase OK (sections:', dirtySecIds || 'all', ')');
+        } else {
+          console.warn('[Sync] Supabase error for DO visit', doVisit.id, doErr.message);
+        }
+      } catch(e) {
+        console.warn('[Sync] Failed for DO visit', doVisit.id, e.message);
       }
     }
 
@@ -2120,6 +2193,32 @@ function buildSyncPayload(visit, onlyModuleIds){
     summary:    {overall:overall, totalScore:totalScore, totalMax:totalMax},
     emailTo:    settings.email || '',
     obsSheet:   visit.obsSheet || {},
+  };
+}
+
+// DO visits use "sections" (do-dm, do-pr, do-mis, do-acc) instead of
+// "modules", and each section carries a richer shape (responses,
+// remarks, regData, roData, finData, evidence) than a facility
+// module's simple responses/remarks. The server-side visit_syncs table
+// is reused as-is — sections are just stored under the same `modules`
+// JSONB column, keyed by section id instead of module id.
+function buildDOSyncPayload(doVisit, onlySectionIds){
+  var allSections = doVisit.sections || {};
+  var uploadSections = allSections;
+  if(onlySectionIds && onlySectionIds.length){
+    uploadSections = {};
+    onlySectionIds.forEach(function(sid){
+      if(allSections[sid] !== undefined) uploadSections[sid] = allSections[sid];
+    });
+  }
+  var deviceId = (settings.defaultMonitor || 'unknown').trim()
+    + ' (' + new Date().toLocaleTimeString('en-GH',{hour:'2-digit',minute:'2-digit'}) + ')';
+  return {
+    deviceId: deviceId,
+    setup:    doVisit.setup || {},
+    modules:  uploadSections,
+    scores:   {},
+    summary:  {},
   };
 }
 
@@ -3690,11 +3789,87 @@ async function pullFromSheets(visitId){
   }
 }
 
+// DO counterpart of pullFromSheets. Sections have a richer shape than
+// facility modules (responses, remarks, regData, roData, finData,
+// evidence), so each field is merged individually rather than assuming
+// just responses/remarks.
+async function pullDOFromSheets(visitId){
+  if(!navigator.onLine || !currentUser || !visitId) return;
+  try {
+    var { data: remote, error } = await sb.from('visit_syncs').select('*').eq('visit_id', visitId).single();
+    if(error || !remote){ console.log('[Pull] DO not in Supabase yet:', visitId); return; }
+
+    var local = await dbGet('do_visits', visitId);
+    if(!local){ local = { id:visitId, setup:remote.setup||{}, sections:{}, createdAt:Date.now() }; }
+
+    var changed = false;
+
+    if(remote.setup && Object.keys(remote.setup).length){
+      var hasLocalSetup = local.setup && Object.keys(local.setup).length;
+      if(!hasLocalSetup){
+        local.setup = remote.setup;
+        changed = true;
+      }
+    }
+
+    if(remote.modules && Object.keys(remote.modules).length){
+      if(!local.sections) local.sections = {};
+      Object.keys(remote.modules).forEach(function(sid){
+        var remSec = remote.modules[sid];
+        if(!remSec) return;
+        var locSec = local.sections[sid] || { responses:{}, remarks:{}, regData:{}, roData:[], finData:{}, evidence:{} };
+
+        ['responses','remarks','regData','finData','evidence'].forEach(function(key){
+          var remObj = remSec[key];
+          if(!remObj) return;
+          if(!locSec[key]) locSec[key] = {};
+          Object.keys(remObj).forEach(function(k){
+            var remVal = remObj[k];
+            if(remVal !== undefined && remVal !== null && JSON.stringify(remVal) !== JSON.stringify(locSec[key][k])){
+              locSec[key][k] = remVal;
+              changed = true;
+            }
+          });
+        });
+        // roData is a list (e.g. roster rows) — take remote's version if
+        // it has at least as much data as what's stored locally.
+        if(remSec.roData && Array.isArray(remSec.roData)){
+          if(!locSec.roData || remSec.roData.length > locSec.roData.length){
+            locSec.roData = remSec.roData;
+            changed = true;
+          }
+        }
+        local.sections[sid] = locSec;
+      });
+    }
+
+    if(changed){
+      local.pulledAt = Date.now();
+      await dbPut('do_visits', local);
+      if(currentDOVisit && currentDOVisit.id === visitId){
+        currentDOVisit = local;
+        var scr = screenStack[screenStack.length-1];
+        if(scr==='do-modules') showDOModules();
+        else if(scr==='do-section') openDOSection(currentDOSectionId);
+      }
+      renderHomeVisits();
+      showSyncPulse();
+    }
+  } catch(e) {
+    console.warn('[Pull] DO failed for', visitId, e.message);
+  }
+}
+
 async function pullAllFromSheets(){
   if(!navigator.onLine || !currentUser) return;
   var visits = await dbGetAll('visits');
   for(var i=0; i<visits.length; i++){
     await pullFromSheets(visits[i].id);
+    await new Promise(function(r){ setTimeout(r, 300); });
+  }
+  var doVisits = await dbGetAll('do_visits');
+  for(var j=0; j<doVisits.length; j++){
+    await pullDOFromSheets(doVisits[j].id);
     await new Promise(function(r){ setTimeout(r, 300); });
   }
 }
@@ -3955,6 +4130,7 @@ async function renderAssignmentVisits(){
         doEl.innerHTML = '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;display:flex;align-items:center;gap:12px">'
           + '<div style="flex:1"><div style="font-size:13px;font-weight:700;color:var(--text)">' + (doVisit.setup&&doVisit.setup.districtName||a.district) + ' District Office</div>'
           + '<div style="font-size:11px;color:var(--muted)">' + (doVisit.setup&&doVisit.setup.date||'') + '</div></div>'
+          + '<button data-dovid="' + doVisit.id + '" data-act="open-do" style="background:rgba(34,181,115,.1);border:1px solid rgba(34,181,115,.3);border-radius:8px;padding:5px 10px;color:var(--accent2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Open</button>'
           + (doClosed
             ? '<div style="font-size:10px;color:var(--accent2);font-weight:700">&#10003; Closed</div>'
             : (a.status==='open'
@@ -3966,7 +4142,8 @@ async function renderAssignmentVisits(){
           var btn = e.target.closest('[data-dovid]');
           if(!btn) return;
           var act = btn.getAttribute('data-act');
-          if(act==='close-do') closeDOVisit(btn.getAttribute('data-dovid'));
+          if(act==='open-do') openDOVisit(btn.getAttribute('data-dovid'));
+          else if(act==='close-do') closeDOVisit(btn.getAttribute('data-dovid'));
           else if(act==='delete-do') deleteDOVisit(btn.getAttribute('data-dovid'), true);
         };
       }
@@ -4034,7 +4211,7 @@ function addDOVisitToAssignment(){
     showToast('This assignment already has a District Office visit. Open it to continue.','');
     return;
   }
-  startDOVisit();
+  startDOVisit(currentAssignment.id);
 }
 
 // ── Override saveSetup to tag visit to assignment ─────────────────────
@@ -4046,22 +4223,26 @@ async function closeVisit(visitId){
   if(!confirm('Mark this facility visit as closed? No further editing will be allowed.')) return;
   var v = await dbGet('visits', visitId);
   if(!v){ showToast('Visit not found','error'); return; }
-  v.closed   = true;
-  v.closedAt = Date.now();
+  v.closed       = true;
+  v.closedAt     = Date.now();
+  v.lastModified = Date.now();
   await dbPut('visits', v);
   showToast('Facility visit closed','success');
   renderAssignmentVisits();
+  triggerBackgroundSync();
 }
 
 async function closeDOVisit(doVisitId){
   if(!confirm('Mark the District Office visit as closed?')) return;
   var v = await dbGet('do_visits', doVisitId);
   if(!v){ showToast('DO visit not found','error'); return; }
-  v.closed   = true;
-  v.closedAt = Date.now();
+  v.closed       = true;
+  v.closedAt     = Date.now();
+  v.lastModified = Date.now();
   await dbPut('do_visits', v);
   showToast('District Office visit closed','success');
   renderAssignmentVisits();
+  triggerBackgroundSync();
 }
 
 async function closeAssignment(){
@@ -4408,6 +4589,9 @@ async function deleteDOVisit(doVisitId, fromAssignment){
     }
   }
   await dbDel('do_visits', doVisitId);
+  if(sb && navigator.onLine){
+    try { await sb.from('visit_syncs').delete().eq('visit_id', doVisitId); } catch(e){}
+  }
   showToast('District Office visit deleted','success');
   if(fromAssignment && currentAssignment){
     renderAssignmentScreen();
@@ -6015,10 +6199,16 @@ async function openDOVisit(id){
   if(!currentDOVisit){ showToast('Could not load visit','error'); return; }
   if(!currentDOVisit.sections) currentDOVisit.sections={};
   showDOModules();
+  if(navigator.onLine && currentUser){
+    setTimeout(function(){ pullDOFromSheets(id); }, 1500);
+  }
 }
 
 
-async function startDOVisit(){
+var _pendingDOAssignmentId = null;
+
+async function startDOVisit(assignmentId){
+  _pendingDOAssignmentId = assignmentId || null;
   // Pre-fill defaults from settings
   const dm = document.getElementById('do-monitor');
   const dr = document.getElementById('do-region');
@@ -6048,10 +6238,25 @@ async function saveDOSetup(){
       member2: document.getElementById('do-member2').value.trim(),
       member3: document.getElementById('do-member3').value.trim(),
     },
-    sections:{}
+    sections:{},
+    assignmentId: _pendingDOAssignmentId || null,
   };
+  currentDOVisit.lastModified = Date.now();
   await doDbPut(currentDOVisit);
+  // Register with parent assignment so it shows under the assignment,
+  // not just floating on its own (mirrors how facility visits link back).
+  if(currentDOVisit.assignmentId){
+    if(!currentAssignment || currentAssignment.id !== currentDOVisit.assignmentId){
+      currentAssignment = await dbGet('assignments', currentDOVisit.assignmentId);
+    }
+    if(currentAssignment){
+      currentAssignment.doVisitId = currentDOVisit.id;
+      await dbPut('assignments', currentAssignment);
+    }
+  }
+  _pendingDOAssignmentId = null;
   showDOModules();
+  triggerBackgroundSync();
 }
 
 function showDOModules(){
@@ -6306,9 +6511,11 @@ function toggleDOIndicator(id){
 }
 
 function saveDOSectionAndBack(){
+  currentDOVisit.lastModified = Date.now();
   doDbPut(currentDOVisit);
   showToast('Section saved','success');
   showDOModules();
+  triggerBackgroundSync();
 }
 
 async function confirmDeleteDO(){
