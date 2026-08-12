@@ -787,6 +787,17 @@ html,body{height:100%;overflow:hidden}
   </div>
 </div>
 
+<!-- Add Member to Team modal -->
+<div class="modal-overlay" id="modal-add-member" onclick="if(event.target===this)closeModal('modal-add-member')">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Add Member</div>
+      <button class="modal-close" onclick="closeModal('modal-add-member')">&#10005;</button></div>
+    <div class="field"><label>Person *</label>
+      <select id="am-user"><option value="">Select a person…</option></select></div>
+    <button class="btn btn-primary" style="width:100%" onclick="adminConfirmAddMember()">Add to Team</button>
+  </div>
+</div>
+
 <!-- ══ ASSIGNMENT DETAIL ═════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-assignment">
   <div class="topbar">
@@ -4716,6 +4727,7 @@ function renderAdminTeams(teams, profiles){
     return;
   }
 
+  var teamIds = teams.map(function(t){ return t.id; });
   var roleOptions = ['admin','leader','member'];
   var html = '';
 
@@ -4724,11 +4736,14 @@ function renderAdminTeams(teams, profiles){
     html += '<div class="card" style="margin-top:14px">';
     html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
     html += '<div style="font-size:15px;font-weight:700;color:var(--text)">'+escHtml(team.name)+'</div>';
+    html += '<div style="display:flex;align-items:center;gap:8px">';
     html += '<div style="font-size:11px;color:var(--muted)">'+members.length+' member(s)</div>';
-    html += '</div>';
+    html += '<button class="btn" style="padding:4px 10px;font-size:11px" onclick="adminOpenAddMemberModal(\''+team.id+'\')">+ Add</button>';
+    html += '<button class="btn" style="padding:4px 10px;font-size:11px;color:var(--red);border-color:rgba(224,80,80,.35)" onclick="adminDeleteTeam(\''+team.id+'\',\''+escHtml(team.name).replace(/'/g,"\\'")+'\')">Delete</button>';
+    html += '</div></div>';
 
     if(!members.length){
-      html += '<div style="font-size:12px;color:var(--muted);padding:8px 0">No members yet — add one from + New User, or reassign someone below.</div>';
+      html += '<div style="font-size:12px;color:var(--muted);padding:8px 0">No members yet — tap + Add to assign someone.</div>';
     }
     members.forEach(function(m){
       html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border)">';
@@ -4744,7 +4759,10 @@ function renderAdminTeams(teams, profiles){
     html += '</div>';
   });
 
-  var unassigned = profiles.filter(function(p){ return !p.team_id; });
+  // Catches both null team_id AND orphaned references (a team_id that
+  // doesn't match any team currently in the database — e.g. left over
+  // from before this module existed).
+  var unassigned = profiles.filter(function(p){ return !p.team_id || teamIds.indexOf(p.team_id) === -1; });
   if(unassigned.length){
     html += '<div class="card" style="margin-top:14px">';
     html += '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px">Unassigned Users</div>';
@@ -4762,6 +4780,53 @@ function renderAdminTeams(teams, profiles){
 
   listEl.innerHTML = html;
 }
+
+async function adminDeleteTeam(teamId, teamName){
+  if(!sb) return;
+  var { data: assignmentsForTeam } = await sb.from('assignments').select('id').eq('team_id', teamId);
+  if(assignmentsForTeam && assignmentsForTeam.length){
+    showToast('Cannot delete "'+teamName+'" — it has '+assignmentsForTeam.length+' monitoring assignment(s). Delete those first.','error');
+    return;
+  }
+  if(!confirm('Delete "'+teamName+'"? Any members on this team will become unassigned. This cannot be undone.')) return;
+
+  var { data: membersOfTeam } = await sb.from('user_profiles').select('id').eq('team_id', teamId);
+  if(membersOfTeam && membersOfTeam.length){
+    await sb.from('user_profiles').update({ team_id: null }).eq('team_id', teamId);
+  }
+  var { error } = await sb.from('teams').delete().eq('id', teamId);
+  if(error){ showToast('Failed: '+error.message,'error'); return; }
+  showToast('Team deleted','success');
+  loadAdminTeams();
+}
+
+var _addMemberTargetTeamId = null;
+
+function adminOpenAddMemberModal(teamId){
+  _addMemberTargetTeamId = teamId;
+  var sel = document.getElementById('am-user');
+  sel.innerHTML = '<option value="">Select a person…</option>';
+  sb.from('user_profiles').select('id,display_name,team_id').order('display_name').then(function(res){
+    (res.data||[]).forEach(function(p){
+      var opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.display_name + (p.team_id === teamId ? ' (already here)' : '');
+      sel.appendChild(opt);
+    });
+  });
+  openModal('modal-add-member');
+}
+
+async function adminConfirmAddMember(){
+  var userId = document.getElementById('am-user').value;
+  if(!userId || !_addMemberTargetTeamId){ showToast('Select a person first','error'); return; }
+  var { error } = await sb.from('user_profiles').update({ team_id: _addMemberTargetTeamId }).eq('id', userId);
+  if(error){ showToast('Failed: '+error.message,'error'); return; }
+  closeModal('modal-add-member');
+  showToast('Added to team','success');
+  loadAdminTeams();
+}
+
 
 function escHtml(s){
   return String(s==null?'':s).replace(/[&<>"']/g, function(c){
