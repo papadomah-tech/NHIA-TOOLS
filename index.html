@@ -1886,6 +1886,7 @@ async function loadAssignmentsFromServer(){
       }
     }
     renderAssignmentList();
+    try{ initCustomScrollbars(); }catch(e){}
   } catch(e){ console.warn('[Assignments] load error:', e.message); }
 }
 
@@ -2123,6 +2124,7 @@ async function renderHomeVisits(){
 
   if(!visits.length){
     el.innerHTML='<div class="empty"><div class="empty-icon">\uD83D\uDCCB</div><div class="empty-title">No standalone visits</div><div class="empty-sub">Visits created via an Assignment appear inside that assignment.</div></div>';
+    try{ initCustomScrollbars(); }catch(e){}
     return;
   }
   visits.sort(function(a,b){return b.createdAt-a.createdAt;});
@@ -2150,6 +2152,7 @@ async function renderHomeVisits(){
     var btn = e.target.closest('[data-delvid]');
     if(btn){ e.stopPropagation(); deleteVisit(btn.getAttribute('data-delvid'), false); }
   };
+  try{ initCustomScrollbars(); }catch(e){}
 }
 
 function calcOverallProgress(visit){
@@ -4779,6 +4782,7 @@ function renderAdminTeams(teams, profiles){
   }
 
   listEl.innerHTML = html;
+  try{ initCustomScrollbars(); }catch(e){}
 }
 
 async function adminDeleteTeam(teamId, teamName){
@@ -5141,7 +5145,13 @@ function setM4(category, field, val){
 // the browser's native scrollbar happens to look like.
 function initCustomScrollbars(){
   document.querySelectorAll('.scroll').forEach(function(scrollEl){
-    if(scrollEl._sliderInit) return; // avoid double-init
+    if(scrollEl._sliderInit){
+      // Already attached — just force a fresh size calculation, since
+      // content (e.g. the assignments list) may have loaded after the
+      // slider was first created.
+      if(scrollEl._sliderLayout) scrollEl._sliderLayout();
+      return;
+    }
     scrollEl._sliderInit = true;
 
     var parent = scrollEl.parentElement;
@@ -5175,6 +5185,7 @@ function initCustomScrollbars(){
       thumb.style.top    = thumbTop+'px';
     }
 
+    scrollEl._sliderLayout = layout;
     scrollEl.addEventListener('scroll', layout, { passive:true });
     window.addEventListener('resize', layout);
     try{
