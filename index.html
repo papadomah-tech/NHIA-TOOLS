@@ -5360,8 +5360,8 @@ function refreshPEISummary(moduleId){
     if(paid>0){
       escEl.classList.add('visible');
       escTxt.textContent=`${paid} patient(s) reported paying a total of GHS ${total.toFixed(2)}. ` +
-        (moduleId==='m5'?'FPHC violation — notify NHIA District Office and GHS District Health Directorate within 24 hours.':
-         'Illegal top-up charges — issue written warning and notify Regional Office within 24 hours.');
+        (moduleId==='m5'?'FPHC violation — notify the NHIA Co-payment Directorate within 24 hours.':
+         'Illegal top-up charges — issue written warning and notify the NHIA Co-payment Directorate within 24 hours.');
     } else {
       escEl.classList.remove('visible');
     }
@@ -5887,7 +5887,7 @@ async function generateReport() {
             + '<td class="' + (d.peiPaidCount>0?'score-unsat':'') + '">' + d.peiPaidCount + '</td>'
             + '<td class="' + (d.peiPaidTotal>0?'score-unsat':'') + '">' + (d.peiPaidTotal>0?'GHS '+d.peiPaidTotal.toFixed(2):'—') + '</td>'
             + '<td class="' + (d.flaggedClaims>0?'score-unsat':'') + '">' + d.flaggedClaims + '</td>'
-            + '<td style="font-size:11px">' + (d.peiPaidCount>0||d.flaggedClaims>0?'Escalate to Regional Office':'—') + '</td>'
+            + '<td style="font-size:11px">' + (d.peiPaidCount>0||d.flaggedClaims>0?'Escalate to Co-payment Directorate':'—') + '</td>'
             + '</tr>';
     });
     html += '</tbody></table></div>';
@@ -6017,7 +6017,7 @@ function deriveRecommendation(id, text, response) {
     '3': 'Provider must implement clinical corrective measures, retrain staff, and submit evidence of compliance within 30 days.',
     '4': 'Provider must address resource/staffing gap and submit written action plan with timeline to the NHIA District Office.',
     '5': 'Provider must immediately cease all illegal charging, refund affected members, and submit written undertaking to NHIA.',
-    '6': 'Provider must immediately comply with FPHC policy; case reported jointly to NHIA District Office and GHS District Health Directorate.',
+    '6': 'Provider must immediately comply with FPHC policy; case reported to the NHIA Co-payment Directorate.',
   };
   return recs[id2] || 'Provider must address this finding and submit corrective action evidence to the NHIA District Office within 30 days.';
 }
