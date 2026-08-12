@@ -321,6 +321,9 @@ html,body{height:100%;overflow:hidden}
 .modal{background:var(--surface);border-radius:24px 24px 0 0;padding:24px 20px 40px;width:100%;max-width:480px;margin:0 auto;border-top:1px solid var(--border);transform:translateY(100%);transition:.3s cubic-bezier(.4,0,.2,1)}
 .modal-overlay.open .modal{transform:translateY(0)}
 .modal-handle{width:36px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.modal-title{font-size:16px;font-weight:700;color:var(--text)}
+.modal-close{width:30px;height:30px;border-radius:50%;background:var(--card);border:1px solid var(--border);color:var(--muted);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
 .modal h2{font-size:16px;font-weight:700;margin-bottom:16px;color:var(--text)}
 
 /* ── Claims table ── */
@@ -629,6 +632,13 @@ html,body{height:100%;overflow:hidden}
     <button class="sidebar-nav-btn" onclick="startDOVisit()">
       <span>🏢</span> New DO Visit
     </button>
+
+    <div id="sb-admin-section" style="display:none">
+      <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 8px;margin:16px 0 8px">Admin</div>
+      <button class="sidebar-nav-btn" onclick="showAdminScreen()">
+        <span>🛠️</span> Team Setup
+      </button>
+    </div>
   </div>
 
   <div style="padding:12px;border-top:1px solid var(--border)">
@@ -688,6 +698,11 @@ html,body{height:100%;overflow:hidden}
     <div class="topbar-title">New Assignment</div>
   </div>
   <div class="scroll" style="padding-bottom:100px">
+    <div class="card" id="as-team-picker-card" style="display:none">
+      <div class="section-label" style="margin-bottom:12px">Team</div>
+      <div class="field"><label>Which team is this assignment for? *</label>
+        <select id="as-team-id"><option value="">Select team…</option></select></div>
+    </div>
     <div class="card">
       <div class="section-label" style="margin-bottom:12px">Team Information</div>
       <div class="field"><label>Team Name *</label>
@@ -720,6 +735,56 @@ html,body{height:100%;overflow:hidden}
     </div>
   </div>
   <button class="fab" onclick="saveAssignment()">Create Assignment &#8594;</button>
+</div>
+
+<!-- ══ ADMIN: TEAM SETUP ═══════════════════════════════════════════════ -->
+<div class="screen hidden" id="screen-admin">
+  <div class="topbar">
+    <button class="topbar-back" onclick="goBack()">&#8592;</button>
+    <div class="topbar-title">Team Setup</div>
+  </div>
+  <div class="scroll" style="padding-bottom:110px">
+    <div class="card" style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" style="flex:1;min-width:140px" onclick="openNewTeamModal()">+ New Team</button>
+      <button class="btn btn-primary" style="flex:1;min-width:140px" onclick="openNewUserModal()">+ New User</button>
+    </div>
+    <div id="admin-teams-list"><div class="empty"><div class="empty-icon">🛠️</div><div class="empty-title">Loading teams…</div></div></div>
+  </div>
+</div>
+
+<!-- New Team modal -->
+<div class="modal-overlay" id="modal-new-team" onclick="if(event.target===this)closeModal('modal-new-team')">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">New Team</div>
+      <button class="modal-close" onclick="closeModal('modal-new-team')">&#10005;</button></div>
+    <div class="field"><label>Team Name *</label>
+      <input id="nt-name" placeholder="e.g. Team Sekondi" type="text"/></div>
+    <button class="btn btn-primary" style="width:100%" onclick="createTeam()">Create Team</button>
+  </div>
+</div>
+
+<!-- New User modal -->
+<div class="modal-overlay" id="modal-new-user" onclick="if(event.target===this)closeModal('modal-new-user')">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">New User Account</div>
+      <button class="modal-close" onclick="closeModal('modal-new-user')">&#10005;</button></div>
+    <div class="field"><label>Full Name *</label>
+      <input id="nu-name" placeholder="e.g. Ama Owusu" type="text"/></div>
+    <div class="field"><label>Email *</label>
+      <input id="nu-email" placeholder="you@nhia.gov.gh" type="email"/></div>
+    <div class="field"><label>Password *</label>
+      <input id="nu-password" placeholder="Minimum 6 characters" type="text"/></div>
+    <div class="field"><label>Role *</label>
+      <select id="nu-role">
+        <option value="member">Member</option>
+        <option value="leader">Leader</option>
+        <option value="admin">Admin</option>
+      </select></div>
+    <div class="field"><label>Team</label>
+      <select id="nu-team"><option value="">No team yet</option></select></div>
+    <div id="nu-error" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:6px"></div>
+    <button class="btn btn-primary" style="width:100%" id="nu-submit-btn" onclick="createUserAccount()">Create Account</button>
+  </div>
 </div>
 
 <!-- ══ ASSIGNMENT DETAIL ═════════════════════════════════════════════ -->
@@ -1708,10 +1773,13 @@ function updateAssignmentsHeader(){
 // to sync to the rest of the team).
 function applyRoleUI(){
   var isLeader = userRole === 'leader';
+  var isAdmin  = userRole === 'admin';
   var hero = document.getElementById('hero-new-assignment-btn');
   var fab  = document.getElementById('fab-new-assignment-btn');
-  if(hero) hero.style.display = isLeader ? '' : 'none';
-  if(fab)  fab.style.display  = isLeader ? '' : 'none';
+  if(hero) hero.style.display = (isLeader||isAdmin) ? '' : 'none';
+  if(fab)  fab.style.display  = (isLeader||isAdmin) ? '' : 'none';
+  var adminSection = document.getElementById('sb-admin-section');
+  if(adminSection) adminSection.style.display = isAdmin ? '' : 'none';
 }
 
 // ── Team Assignments: server sync ────────────────────────────────────────
@@ -1723,7 +1791,7 @@ function applyRoleUI(){
 function _assignmentToServerRow(a){
   return {
     id:             a.id,
-    team_id:        userTeamId,
+    team_id:        a.teamId || userTeamId,
     team_name:      a.teamName || '',
     leader:         a.leader || '',
     members:        a.members || [],
@@ -1744,6 +1812,7 @@ function _serverRowToAssignment(row){
     id:            row.id,
     createdAt:     row.created_at ? new Date(row.created_at).getTime() : Date.now(),
     status:        row.status || 'open',
+    teamId:        row.team_id,
     teamName:      row.team_name || '',
     leader:        row.leader || '',
     members:       row.members || [],
@@ -3803,6 +3872,27 @@ function startNewAssignment(){
   el = document.getElementById('as-leader'); if(el) el.value = settings.defaultMonitor||'';
   el = document.getElementById('as-region'); if(el) el.value = settings.defaultRegion||'';
   el = document.getElementById('as-start-date'); if(el) el.value = today;
+
+  // Admins pick which team this assignment is for (they may not belong
+  // to any team themselves). Leaders don't see this — it's always their
+  // own team.
+  var pickerCard = document.getElementById('as-team-picker-card');
+  if(userRole === 'admin' && pickerCard){
+    pickerCard.style.display = '';
+    var sel = document.getElementById('as-team-id');
+    sel.innerHTML = '<option value="">Select team…</option>';
+    if(sb){
+      sb.from('teams').select('id,name').order('name').then(function(res){
+        (res.data||[]).forEach(function(t){
+          var opt = document.createElement('option');
+          opt.value = t.id; opt.textContent = t.name;
+          sel.appendChild(opt);
+        });
+      });
+    }
+  } else if(pickerCard){
+    pickerCard.style.display = 'none';
+  }
 }
 
 async function saveAssignment(){
@@ -3815,6 +3905,12 @@ async function saveAssignment(){
   var endDate   = (document.getElementById('as-end-date').value||'').trim();
   var facCount  = parseInt(document.getElementById('as-facility-count').value||'0')||0;
 
+  var targetTeamId = userTeamId; // default: leader's own team
+  if(userRole === 'admin'){
+    targetTeamId = (document.getElementById('as-team-id').value||'').trim();
+    if(!targetTeamId){ showToast('Please select which team this assignment is for','error'); return; }
+  }
+
   if(!teamName||!leader||!district||!startDate){
     showToast('Please fill Team Name, Leader, District, and Period Start','error'); return;
   }
@@ -3826,6 +3922,7 @@ async function saveAssignment(){
     id:           'a_' + Date.now(),
     createdAt:    Date.now(),
     status:       'open',   // open | closed
+    teamId:       targetTeamId, // which team this belongs to (admin can pick any team)
     teamName:     teamName,
     leader:       leader,
     members:      members,
@@ -4577,6 +4674,194 @@ function closeSettings(e){
   if(!e||e.target===document.getElementById('settings-overlay'))
     document.getElementById('settings-overlay').classList.remove('open');
 }
+
+function openModal(id){ var el=document.getElementById(id); if(el) el.classList.add('open'); }
+function closeModal(id){ var el=document.getElementById(id); if(el) el.classList.remove('open'); }
+
+// ══ ADMIN: TEAM SETUP ═══════════════════════════════════════════════════════
+var _adminTeamsCache = [];
+
+function showAdminScreen(){
+  showScreen('admin');
+  loadAdminTeams();
+}
+
+async function loadAdminTeams(){
+  var listEl = document.getElementById('admin-teams-list');
+  if(!sb || userRole !== 'admin'){ return; }
+  try {
+    var [{ data: teams, error: teamsErr }, { data: profiles, error: profilesErr }] = await Promise.all([
+      sb.from('teams').select('*').order('name'),
+      sb.from('user_profiles').select('*'),
+    ]);
+    if(teamsErr){ console.warn('[Admin] teams load error:', teamsErr.message); showToast('Could not load teams: '+teamsErr.message,'error'); return; }
+    if(profilesErr){ console.warn('[Admin] profiles load error:', profilesErr.message); }
+
+    _adminTeamsCache = teams || [];
+    renderAdminTeams(_adminTeamsCache, profiles || []);
+  } catch(e){
+    console.warn('[Admin] load error:', e.message);
+    if(listEl) listEl.innerHTML = '<div class="empty"><div class="empty-title">Failed to load</div><div class="empty-sub">'+e.message+'</div></div>';
+  }
+}
+
+function renderAdminTeams(teams, profiles){
+  var listEl = document.getElementById('admin-teams-list');
+  if(!listEl) return;
+
+  if(!teams.length){
+    listEl.innerHTML = '<div class="empty"><div class="empty-icon">🛠️</div><div class="empty-title">No teams yet</div><div class="empty-sub">Tap + New Team to create one.</div></div>';
+    return;
+  }
+
+  var roleOptions = ['admin','leader','member'];
+  var html = '';
+
+  teams.forEach(function(team){
+    var members = profiles.filter(function(p){ return p.team_id === team.id; });
+    html += '<div class="card" style="margin-top:14px">';
+    html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">';
+    html += '<div style="font-size:15px;font-weight:700;color:var(--text)">'+escHtml(team.name)+'</div>';
+    html += '<div style="font-size:11px;color:var(--muted)">'+members.length+' member(s)</div>';
+    html += '</div>';
+
+    if(!members.length){
+      html += '<div style="font-size:12px;color:var(--muted);padding:8px 0">No members yet — add one from + New User, or reassign someone below.</div>';
+    }
+    members.forEach(function(m){
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border)">';
+      html += '<div style="flex:1;font-size:13px;color:var(--text)">'+escHtml(m.display_name||'(unnamed)')+'</div>';
+      html += '<select style="font-size:12px;padding:4px 6px" onchange="adminChangeRole(\''+m.id+'\',this.value)">';
+      roleOptions.forEach(function(r){
+        html += '<option value="'+r+'"'+(m.role===r?' selected':'')+'>'+r.charAt(0).toUpperCase()+r.slice(1)+'</option>';
+      });
+      html += '</select>';
+      html += '<button class="btn" style="padding:4px 10px;font-size:11px" onclick="adminRemoveFromTeam(\''+m.id+'\')">Remove</button>';
+      html += '</div>';
+    });
+    html += '</div>';
+  });
+
+  var unassigned = profiles.filter(function(p){ return !p.team_id; });
+  if(unassigned.length){
+    html += '<div class="card" style="margin-top:14px">';
+    html += '<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:10px">Unassigned Users</div>';
+    unassigned.forEach(function(m){
+      html += '<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--border)">';
+      html += '<div style="flex:1;font-size:13px;color:var(--text)">'+escHtml(m.display_name||'(unnamed)')+' <span style="color:var(--muted);font-size:11px">('+m.role+')</span></div>';
+      html += '<select style="font-size:12px;padding:4px 6px" onchange="if(this.value)adminAssignToTeam(\''+m.id+'\',this.value)">';
+      html += '<option value="">Assign to team…</option>';
+      teams.forEach(function(t){ html += '<option value="'+t.id+'">'+escHtml(t.name)+'</option>'; });
+      html += '</select>';
+      html += '</div>';
+    });
+    html += '</div>';
+  }
+
+  listEl.innerHTML = html;
+}
+
+function escHtml(s){
+  return String(s==null?'':s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
+
+async function adminChangeRole(userId, newRole){
+  if(!sb) return;
+  var { error } = await sb.from('user_profiles').update({ role: newRole }).eq('id', userId);
+  if(error){ showToast('Failed: '+error.message,'error'); return; }
+  showToast('Role updated','success');
+  loadAdminTeams();
+}
+
+async function adminRemoveFromTeam(userId){
+  if(!sb) return;
+  var { error } = await sb.from('user_profiles').update({ team_id: null }).eq('id', userId);
+  if(error){ showToast('Failed: '+error.message,'error'); return; }
+  showToast('Removed from team','success');
+  loadAdminTeams();
+}
+
+async function adminAssignToTeam(userId, teamId){
+  if(!sb) return;
+  var { error } = await sb.from('user_profiles').update({ team_id: teamId }).eq('id', userId);
+  if(error){ showToast('Failed: '+error.message,'error'); return; }
+  showToast('Assigned to team','success');
+  loadAdminTeams();
+}
+
+function openNewTeamModal(){
+  document.getElementById('nt-name').value = '';
+  openModal('modal-new-team');
+}
+
+async function createTeam(){
+  var name = (document.getElementById('nt-name').value||'').trim();
+  if(!name){ showToast('Enter a team name','error'); return; }
+  var { error } = await sb.from('teams').insert({ name: name });
+  if(error){ showToast('Failed: '+error.message,'error'); return; }
+  closeModal('modal-new-team');
+  showToast('Team created','success');
+  loadAdminTeams();
+}
+
+function openNewUserModal(){
+  document.getElementById('nu-name').value = '';
+  document.getElementById('nu-email').value = '';
+  document.getElementById('nu-password').value = '';
+  document.getElementById('nu-role').value = 'member';
+  document.getElementById('nu-error').textContent = '';
+  var teamSel = document.getElementById('nu-team');
+  teamSel.innerHTML = '<option value="">No team yet</option>';
+  _adminTeamsCache.forEach(function(t){
+    var opt = document.createElement('option');
+    opt.value = t.id; opt.textContent = t.name;
+    teamSel.appendChild(opt);
+  });
+  openModal('modal-new-user');
+}
+
+async function createUserAccount(){
+  var name     = (document.getElementById('nu-name').value||'').trim();
+  var email    = (document.getElementById('nu-email').value||'').trim();
+  var password = document.getElementById('nu-password').value;
+  var role     = document.getElementById('nu-role').value;
+  var teamId   = document.getElementById('nu-team').value || null;
+  var errEl    = document.getElementById('nu-error');
+  var btn      = document.getElementById('nu-submit-btn');
+  errEl.textContent = '';
+
+  if(!name || !email || !password){ errEl.textContent = 'Name, email, and password are required.'; return; }
+  if(password.length < 6){ errEl.textContent = 'Password must be at least 6 characters.'; return; }
+
+  btn.disabled = true; btn.textContent = 'Creating…';
+  try {
+    var { data: { session } } = await sb.auth.getSession();
+    var resp = await fetch(SUPABASE_URL + '/functions/v1/admin-create-user', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + (session && session.access_token),
+        'apikey': SUPABASE_KEY,
+      },
+      body: JSON.stringify({ email:email, password:password, display_name:name, role:role, team_id:teamId }),
+    });
+    var result = await resp.json();
+    if(!resp.ok || result.error){
+      errEl.textContent = result.error || ('Failed (HTTP '+resp.status+')');
+      return;
+    }
+    closeModal('modal-new-user');
+    showToast('Account created for '+name,'success');
+    loadAdminTeams();
+  } catch(e){
+    errEl.textContent = 'Network error: ' + e.message;
+  } finally {
+    btn.disabled = false; btn.textContent = 'Create Account';
+  }
+}
+
 
 function showToast(msg,type=''){
   const t=document.getElementById('toast');
