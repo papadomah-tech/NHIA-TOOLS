@@ -200,7 +200,7 @@ html,body{height:100%;overflow:hidden}
 .field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%237a9ab5' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px;cursor:pointer}
 .field textarea{resize:none;min-height:72px;line-height:1.5}
 .field input::placeholder,.field textarea::placeholder{color:var(--border)}
-.field input[type="date"]{color-scheme:dark}
+.field input[type="date"]{color-scheme:light;cursor:pointer}
 
 .section-divider{background:var(--surface);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:12px;border-left:3px solid var(--accent)}
 .section-divider h3{font-size:12px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase}
@@ -5404,6 +5404,17 @@ function setM4(category, field, val){
 // Adds an unmistakably visible, draggable slider to every scrollable screen,
 // so content below the fold is always reachable — independent of whatever
 // the browser's native scrollbar happens to look like.
+// Clicking anywhere on a date field opens the native calendar picker,
+// not just the small icon — works for every date input in the app,
+// including ones added dynamically later (e.g. claims table rows),
+// via event delegation.
+document.addEventListener('click', function(e){
+  var target = e.target.closest('input[type="date"]');
+  if(target && typeof target.showPicker === 'function'){
+    try{ target.showPicker(); }catch(err){}
+  }
+});
+
 function initCustomScrollbars(){
   document.querySelectorAll('.scroll').forEach(function(scrollEl){
     if(scrollEl._sliderInit){
