@@ -1521,7 +1521,7 @@ function dbDel(store,key){if(!db)return Promise.resolve();return new Promise((re
 function dbGetAll(store){if(!db)return Promise.resolve([]);return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);}catch(e){res([]); }});}
 
 // ══ ROUTING ════════════════════════════════════════════════════════════════
-const screens = ['home','assignment-setup','assignment','setup','modules','module','dashboard','sync','report','obs','do-setup','do-modules','do-section','do-report'];
+const screens = ['home','assignment-setup','assignment','setup','modules','module','dashboard','sync','report','obs','do-setup','do-modules','do-section','do-report','admin'];
 let screenStack = ['home'];
 
 function showScreen(id, direction='forward'){
