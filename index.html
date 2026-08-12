@@ -1197,17 +1197,15 @@ const MODULES = [
   // Source: Wappy1 checklist — Administrative Compliance section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:60,
+    id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:48,
     sections:[
       {title:'A. Credentialing & Contractual', items:[
         {id:'1.1', text:'NHIA credentialing certificate available, valid, and displayed (check availability and validity)', weight:12},
         {id:'1.2', text:'NHIA–Service Provider Contract available; signed copy on file and conditions being complied with', weight:10},
         {id:'1.3', text:'Date, entry/exit time of visit recorded; facility visitors register signed by monitoring team', weight:5},
         {id:'1.4', text:'Provider operating within approved scope of services as specified in NHIA credential', weight:8},
-        {id:'1.5', text:'HeFRA/FDA operating licence current and displayed', weight:8},
-        {id:'1.6', text:'No outstanding sanctions or suspension orders from NHIA', weight:10},
-        {id:'1.7', text:'NHIA member charter and patient rights notice posted visibly in waiting area', weight:7},
-        {id:'1.8', text:'Patient complaint mechanism functional and visible — complaint box, posted NHIA hotline, or designated complaints officer identifiable', weight:6},
+        {id:'1.5', text:'NHIA member charter and patient rights notice posted visibly in waiting area', weight:7},
+        {id:'1.6', text:'Patient complaint mechanism functional and visible — complaint box, posted NHIA hotline, or designated complaints officer identifiable', weight:6},
       ]},
     ]
   },
@@ -1217,7 +1215,7 @@ const MODULES = [
   // Source: Wappy1 — Claims Management section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m2', num:'02', title:'Claims Management', color:'#C0392B', maxScore:90,
+    id:'m2', num:'02', title:'Claims Management', color:'#C0392B', maxScore:80,
     hasClaims:true,
     sections:[
       {title:'A. Claims Generation & Submission (Claim-it)', items:[
@@ -1234,7 +1232,6 @@ const MODULES = [
       {title:'C. Claims Sample Verification', items:[
         {id:'2.8', text:'Patient folders cross-checked against claims — diagnosis and treatment consistent with what was claimed (audit 5–10 folders)', weight:10},
         {id:'2.9', text:'OPD, consulting room, ANC, delivery, wound dressing, and family planning registers complete, accurate, and consistent with claims submitted', weight:10, levels:['CHPS Compound','Health Centre','Private Clinic','Public Hospital','Private Hospital']},
-        {id:'2.10', text:'No ghost/fictitious patient billing — sampled claims verified against physical attendance and folder records', weight:10},
       ]},
     ]
   },
@@ -1302,7 +1299,7 @@ const MODULES = [
   // Source: Wappy1 — Financial Accountability / Co-payment Monitoring section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m5', num:'05', title:'Financial Accountability & Co-Payment Detection', color:'#E09052', maxScore:100,
+    id:'m5', num:'05', title:'Financial Accountability & Co-Payment Detection', color:'#E09052', maxScore:81,
     hasPatientInterview:true, interviewLabel:'Patient Exit Interviews (Co-Payment Detection)',
     indicators:[
       {id:'5.1', text:'OPD / Consultation — NHIS patients not charged for OPD card, first-time consultation, or folder fees; charges verified through receipt check and patient interviews', weight:10, section:'A. Co-Payment Detection by Service Type'},
@@ -1314,8 +1311,6 @@ const MODULES = [
       {id:'5.7', text:'Receipt & Billing Practices — Receipts properly issued, itemised, and aligned with NHIS benefit package; no informal/handwritten receipts for covered services', weight:9, section:'B. Receipt & Billing Integrity'},
       {id:'5.8', text:'No unofficial fee notices, informal price lists, or handwritten fee schedules requesting payment from NHIS members posted anywhere in the facility', weight:8, section:'B. Receipt & Billing Integrity'},
       {id:'5.9', text:'Cashier/billing records reviewed — no out-of-pocket charges coded against NHIS patient encounters on the day of visit', weight:9, section:'B. Receipt & Billing Integrity'},
-      {id:'5.10', text:'Average co-payment estimated from receipts and patient feedback — total illegal charges calculated for sampled NHIS patients', weight:9, section:'C. Co-Payment Quantification'},
-      {id:'5.11', text:'Patient exit interviews confirm no payments requested — minimum 5 NHIS patients interviewed using structured exit interview form', weight:10, section:'C. Co-Payment Quantification'},
     ]
   },
 
@@ -4352,27 +4347,27 @@ function updatePEITotal(moduleId, idx){
   const p=(currentVisit.modules[moduleId]&&currentVisit.modules[moduleId].patients&&currentVisit.modules[moduleId].patients[idx])||{};
   const total=(parseFloat(p.registrationFee||0)+parseFloat(p.consultFee||0)+
     parseFloat(p.medicineFee||0)+parseFloat(p.labFee||0)+parseFloat(p.otherFee||0)).toFixed(2);
-  const el=document.getElementById(`pei-total-val-\${moduleId}-\${idx}`);
-  if(el){el.textContent=`GHS \${total}`;el.className=`pei-total-val \${parseFloat(total)===0?'zero':''}`;}
+  const el=document.getElementById(`pei-total-val-${moduleId}-${idx}`);
+  if(el){el.textContent=`GHS ${total}`;el.className=`pei-total-val ${parseFloat(total)===0?'zero':''}`;}
 }
 
 function refreshPEICard(moduleId, idx){
   const p=(currentVisit.modules[moduleId]&&currentVisit.modules[moduleId].patients&&currentVisit.modules[moduleId].patients[idx])||{};
-  const card=document.getElementById(`pei-card-\${moduleId}-\${idx}`);
+  const card=document.getElementById(`pei-card-${moduleId}-${idx}`);
   if(!card)return;
   const feesTotal=parseFloat(p.registrationFee||0)+parseFloat(p.consultFee||0)+
     parseFloat(p.medicineFee||0)+parseFloat(p.labFee||0)+parseFloat(p.otherFee||0);
   const hasPaid=feesTotal>0||p.paid==='Yes';
   const isComplete=!!(p.serviceReceived||p.nhisStatus);
-  card.className=`pei-card \${hasPaid?'flagged':isComplete?'clear':''} \${card.classList.contains('open')?'open':''}`;
+  card.className=`pei-card ${hasPaid?'flagged':isComplete?'clear':''} ${card.classList.contains('open')?'open':''}`;
   const flagEl=card.querySelector('.pei-flag');
   if(flagEl){
-    flagEl.className=`pei-flag \${hasPaid?'warn':isComplete?'ok':'blank'}`;
+    flagEl.className=`pei-flag ${hasPaid?'warn':isComplete?'ok':'blank'}`;
     flagEl.textContent=hasPaid?'⚑ PAYMENT FLAGGED':isComplete?'✓ Recorded':'Not started';
   }
   const subEl=card.querySelector('.pei-summary-sub');
   if(subEl&&isComplete)
-    subEl.textContent=`\${p.gender||'—'} · \${p.ageGroup||'—'} · NHIS: \${p.nhisStatus||'—'} · \${p.serviceReceived||'—'}`;
+    subEl.textContent=`${p.gender||'—'} · ${p.ageGroup||'—'} · NHIS: ${p.nhisStatus||'—'} · ${p.serviceReceived||'—'}`;
   updatePEITotal(moduleId,idx);
 }
 
@@ -4381,18 +4376,18 @@ function refreshPEISummary(moduleId){
   const recorded=patients.filter(p=>p&&(p.serviceReceived||p.nhisStatus)).length;
   const paid=patients.filter(p=>p&&(parseFloat(p.totalPaid||0)>0||p.paid==='Yes')).length;
   const total=patients.reduce(function(s,p){return s+(parseFloat(p&&p.totalPaid||0)||parseFloat(p&&p.otherFee||0));},0);
-  const cEl=document.getElementById(`pei-count-\${moduleId}`);
-  const pEl=document.getElementById(`pei-paid-\${moduleId}`);
-  const tEl=document.getElementById(`pei-total-\${moduleId}`);
-  const escEl=document.getElementById(`pei-esc-\${moduleId}`);
-  const escTxt=document.getElementById(`pei-esc-text-\${moduleId}`);
+  const cEl=document.getElementById(`pei-count-${moduleId}`);
+  const pEl=document.getElementById(`pei-paid-${moduleId}`);
+  const tEl=document.getElementById(`pei-total-${moduleId}`);
+  const escEl=document.getElementById(`pei-esc-${moduleId}`);
+  const escTxt=document.getElementById(`pei-esc-text-${moduleId}`);
   if(cEl)cEl.textContent=recorded;
   if(pEl)pEl.textContent=paid;
   if(tEl)tEl.textContent=total.toFixed(2);
   if(escEl&&escTxt){
     if(paid>0){
       escEl.classList.add('visible');
-      escTxt.textContent=`\${paid} patient(s) reported paying a total of GHS \${total.toFixed(2)}. ` +
+      escTxt.textContent=`${paid} patient(s) reported paying a total of GHS ${total.toFixed(2)}. ` +
         (moduleId==='m5'?'FPHC violation — notify NHIA District Office and GHS District Health Directorate within 24 hours.':
          'Illegal top-up charges — issue written warning and notify Regional Office within 24 hours.');
     } else {
