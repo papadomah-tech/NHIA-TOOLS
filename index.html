@@ -570,6 +570,40 @@ html,body{height:100%;overflow:hidden}
       <div style="font-size:10px;color:var(--muted);margin-top:4px;font-weight:600">M&amp;E Monitoring System</div>
     </div>
   </div>
+
+  <!-- Nav items -->
+  <div style="padding:16px 12px;flex:1">
+    <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 8px;margin-bottom:8px">Navigation</div>
+    <button class="sidebar-nav-btn" onclick="goHome()" id="sb-home">
+      <span>🏠</span> Home
+    </button>
+    <button class="sidebar-nav-btn" id="sb-visit" style="display:none" onclick="if(currentVisit) showModules()">
+      <span>📋</span> Current Visit
+    </button>
+
+    <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 8px;margin:16px 0 8px">Team</div>
+    <button class="sidebar-nav-btn" onclick="startNewVisit()">
+      <span>➕</span> New Provider Visit
+    </button>
+    <button class="sidebar-nav-btn" onclick="joinTeamVisit()">
+      <span>👥</span> Join a Team Visit
+    </button>
+    <button class="sidebar-nav-btn" id="sb-share" style="display:none" onclick="shareVisit()">
+      <span>🔗</span> Share Visit Link
+    </button>
+
+    <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 8px;margin:16px 0 8px">District Office</div>
+    <button class="sidebar-nav-btn" onclick="startDOVisit()">
+      <span>🏢</span> New DO Visit
+    </button>
+  </div>
+
+  <div style="padding:12px;border-top:1px solid var(--border)">
+    <button class="sidebar-nav-btn" onclick="openSettings()">
+      <span>⚙️</span> Settings
+    </button>
+    <div id="sidebar-sync-status" class="text-muted" style="font-size:11px;padding:8px;margin-top:4px">Checking…</div>
+  </div>
 </div>
 
 <!-- ══ DESKTOP MAIN CONTENT AREA ══════════════════════════════════════ -->
