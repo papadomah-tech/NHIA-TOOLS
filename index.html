@@ -64,8 +64,8 @@ html,body{height:100%;overflow:hidden}
 .screen.hidden{pointer-events:none;opacity:0;transform:translateX(100%)}
 .screen.back-hidden{pointer-events:none;opacity:0;transform:translateX(-40%)}
 
-/* ══ TABLET (640–1023px) ══════════════════════════════════════════════ */
-@media(min-width:640px) and (max-width:1023px){
+/* ══ TABLET (640–767px) — still single-column, sidebar takes over at 768px ══ */
+@media(min-width:640px) and (max-width:767px){
   #app{max-width:680px}
   .topbar{padding-top:20px}
   .module-grid{grid-template-columns:1fr 1fr;gap:10px}
@@ -73,15 +73,16 @@ html,body{height:100%;overflow:hidden}
   .resp-btn{font-size:13px}
 }
 
-/* ══ DESKTOP (1024px+) ════════════════════════════════════════════════ */
-@media(min-width:1024px){
+/* ══ DESKTOP / SIDEBAR (768px+) ═══════════════════════════════════════ */
+@media(min-width:768px){
   html,body{overflow:hidden}
+  #mobile-settings-gear{display:none}
   #app{
     max-width:100%;
     width:100%;
     height:100vh;
     display:grid;
-    grid-template-columns:260px 1fr;
+    grid-template-columns:220px 1fr;
     grid-template-rows:100vh;
     overflow:hidden;
   }
@@ -114,17 +115,28 @@ html,body{height:100%;overflow:hidden}
     width:calc(100% - 48px);
   }
   .fab:active{transform:scale(.97)}
+  /* Bottom action bars (e.g. assignment screen) stay within desktop-main, not clipped to mobile width */
+  .screen > div[style*="position:absolute"][style*="bottom:0"]{
+    max-width:600px !important;
+  }
   /* Wider content */
   .card{padding:20px}
   .module-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
   .field input,.field select,.field textarea{font-size:15px;padding:13px 16px}
   .resp-btn{font-size:13px;padding:12px 8px}
   .scroll{padding-bottom:120px}
+  /* Toast should center within the content column, not across the sidebar too */
+  .toast{left:calc(50% + 110px)}
 }
 
 /* ══ LARGE DESKTOP (1440px+) ═════════════════════════════════════════ */
+@media(min-width:1024px){
+  #app{grid-template-columns:260px 1fr}
+  .toast{left:calc(50% + 130px)}
+}
 @media(min-width:1440px){
   #app{grid-template-columns:300px 1fr}
+  .toast{left:calc(50% + 150px)}
 }
 
 /* ── Top bar ── */
@@ -177,7 +189,7 @@ html,body{height:100%;overflow:hidden}
 .visit-progress{margin-top:10px;height:4px;background:var(--border);border-radius:2px;overflow:hidden}
 .visit-progress-bar{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .5s ease}
 
-.fab{position:fixed;bottom:24px;right:50%;transform:translateX(calc(50% + 0px));max-width:calc(480px - 48px);width:calc(100% - 48px);background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 100%);color:#fff;border:none;border-radius:var(--radius);padding:16px;font-size:15px;font-weight:700;font-family:'Sora',sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(26,140,91,.4);display:flex;align-items:center;justify-content:center;gap:8px;transition:var(--trans);z-index:10}
+.fab{position:absolute;bottom:24px;right:50%;transform:translateX(calc(50% + 0px));max-width:calc(480px - 48px);width:calc(100% - 48px);background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 100%);color:#fff;border:none;border-radius:var(--radius);padding:16px;font-size:15px;font-weight:700;font-family:'Sora',sans-serif;cursor:pointer;box-shadow:0 8px 24px rgba(26,140,91,.4);display:flex;align-items:center;justify-content:center;gap:8px;transition:var(--trans);z-index:10}
 .fab:active{transform:translateX(calc(50% + 0px)) scale(.97)}
 
 /* ── Form elements ── */
@@ -711,7 +723,7 @@ html,body{height:100%;overflow:hidden}
     <div class="section-label" style="margin-top:16px;margin-bottom:8px">District Office Visit</div>
     <div id="assign-do-visit"></div>
   </div>
-  <div style="position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;background:linear-gradient(transparent,var(--ink2) 60%);pointer-events:none;display:flex;flex-direction:column;gap:8px;align-items:stretch;max-width:480px;margin:0 auto">
+  <div style="position:absolute;bottom:0;left:0;right:0;padding:12px 16px 28px;background:linear-gradient(transparent,var(--ink2) 60%);pointer-events:none;display:flex;flex-direction:column;gap:8px;align-items:stretch;max-width:480px;margin:0 auto">
     <button id="assign-report-btn" onclick="generateTeamReport()" style="pointer-events:auto;display:none;width:100%;background:var(--gold);color:#000;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">&#128196; Generate Team Report</button>
     <button id="assign-add-visit-btn" onclick="addFacilityVisit()" style="pointer-events:auto;width:100%;background:var(--accent);color:#fff;border:none;border-radius:12px;padding:14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer">&#43; Add Facility Visit</button>
     <button id="assign-add-do-btn" onclick="addDOVisitToAssignment()" style="pointer-events:auto;width:100%;background:rgba(34,181,115,.08);color:var(--accent2);border:1px solid rgba(34,181,115,.3);border-radius:12px;padding:12px;font-size:13px;font-weight:700;font-family:inherit;cursor:pointer">&#127970; Add District Office Visit</button>
@@ -4511,8 +4523,9 @@ async function init(){
 
   try {
     const gear=document.createElement('button');
+    gear.id='mobile-settings-gear';
     gear.innerHTML='⚙️';
-    gear.style.cssText='position:absolute;top:52px;right:16px;background:var(--card);border:1px solid var(--border);border-radius:50%;width:36px;height:36px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center';
+    gear.style.cssText='position:absolute;top:52px;right:16px;background:var(--card);border:1px solid var(--border);border-radius:50%;width:36px;height:36px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5';
     gear.onclick=openSettings;
     const homeScreen=document.getElementById('screen-home');
     if(homeScreen){homeScreen.style.position='relative';homeScreen.appendChild(gear);}
