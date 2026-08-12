@@ -690,7 +690,7 @@ html,body{height:100%;overflow:hidden}
     <div class="card" id="as-team-picker-card" style="display:none">
       <div class="section-label" style="margin-bottom:12px">Team</div>
       <div class="field"><label>Which team is this assignment for? *</label>
-        <select id="as-team-id"><option value="">Select team…</option></select></div>
+        <select id="as-team-id" onchange="onAsTeamPicked()"><option value="">Select team…</option></select></div>
     </div>
     <div class="card">
       <div class="section-label" style="margin-bottom:12px">Team Information</div>
@@ -3948,6 +3948,8 @@ function startNewAssignment(){
   el = document.getElementById('as-region'); if(el) el.value = settings.defaultRegion||'';
   el = document.getElementById('as-start-date'); if(el) el.value = today;
 
+  var nameField = document.getElementById('as-team-name');
+
   // Admins pick which team this assignment is for (they may not belong
   // to any team themselves). Leaders don't see this — it's always their
   // own team.
@@ -3965,9 +3967,33 @@ function startNewAssignment(){
         });
       });
     }
+    // Team Name is derived from whichever team gets picked below —
+    // locked until then so it can never drift from the real team.
+    if(nameField){
+      nameField.value = '';
+      nameField.readOnly = true;
+      nameField.placeholder = 'Select a team above first';
+      nameField.style.background = 'var(--surface)';
+    }
   } else if(pickerCard){
     pickerCard.style.display = 'none';
+    // Leaders: always their own team — no manual typing, no picker needed.
+    if(nameField){
+      nameField.value = userTeamName || '';
+      nameField.readOnly = true;
+      nameField.style.background = 'var(--surface)';
+    }
   }
+}
+
+// Called when an Admin selects a team from the picker — locks Team
+// Name to that team's real name so the two can never disagree.
+function onAsTeamPicked(){
+  var sel = document.getElementById('as-team-id');
+  var nameField = document.getElementById('as-team-name');
+  if(!sel || !nameField) return;
+  var selectedOption = sel.options[sel.selectedIndex];
+  nameField.value = (sel.value && selectedOption) ? selectedOption.textContent : '';
 }
 
 async function saveAssignment(){
