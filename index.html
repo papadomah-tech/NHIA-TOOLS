@@ -630,6 +630,9 @@ html,body{height:100%;overflow:hidden}
       <button class="sidebar-nav-btn" onclick="showAdminScreen()">
         <span>🛠️</span> Team Setup
       </button>
+      <button class="sidebar-nav-btn" onclick="showUsersScreen()">
+        <span>👤</span> Users
+      </button>
     </div>
   </div>
 
@@ -796,6 +799,38 @@ html,body{height:100%;overflow:hidden}
   </div>
   <div class="scroll" style="padding-top:12px">
     <div id="all-assignments-list"></div>
+  </div>
+</div>
+
+<!-- ══ USERS ═════════════════════════════════════════════════════════ -->
+<div class="screen hidden" id="screen-users">
+  <div class="topbar">
+    <button class="topbar-back" onclick="goBack()">&#8592;</button>
+    <div class="topbar-title">Users</div>
+  </div>
+  <div class="scroll" style="padding-top:12px">
+    <div id="users-list"><div class="empty"><div class="empty-title">Loading users…</div></div></div>
+  </div>
+</div>
+
+<!-- Create/Fix Profile modal -->
+<div class="modal-overlay" id="modal-fix-profile" onclick="if(event.target===this)closeModal('modal-fix-profile')">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title" id="fp-title">Create Profile</div>
+      <button class="modal-close" onclick="closeModal('modal-fix-profile')">&#10005;</button></div>
+    <div class="field"><label id="fp-email-label">Email</label></div>
+    <div class="field"><label>Full Name *</label>
+      <input id="fp-name" placeholder="e.g. Sally Tamakloe" type="text"/></div>
+    <div class="field"><label>Role *</label>
+      <select id="fp-role">
+        <option value="member">Member</option>
+        <option value="leader">Leader</option>
+        <option value="admin">Admin</option>
+      </select></div>
+    <div class="field"><label>Team</label>
+      <select id="fp-team"><option value="">No team yet</option></select></div>
+    <div id="fp-error" style="color:var(--red);font-size:12px;min-height:16px;margin-bottom:6px"></div>
+    <button class="btn btn-primary" style="width:100%" onclick="submitFixProfile()">Save</button>
   </div>
 </div>
 
@@ -1509,7 +1544,7 @@ function dbDel(store,key){if(!db)return Promise.resolve();return new Promise((re
 function dbGetAll(store){if(!db)return Promise.resolve([]);return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);}catch(e){res([]); }});}
 
 // ══ ROUTING ════════════════════════════════════════════════════════════════
-const screens = ['home','assignment-setup','assignment','setup','modules','module','dashboard','sync','report','obs','do-setup','do-modules','do-section','do-report','admin','all-assignments'];
+const screens = ['home','assignment-setup','assignment','setup','modules','module','dashboard','sync','report','obs','do-setup','do-modules','do-section','do-report','admin','all-assignments','users'];
 let screenStack = ['home'];
 
 function showScreen(id, direction='forward'){
@@ -4656,6 +4691,99 @@ async function adminConfirmAddMember(){
   closeModal('modal-add-member');
   showToast('Added to team','success');
   loadAdminTeams();
+}
+
+// ══ USERS (all login accounts, including ones missing a profile) ═══════════
+var _usersCache = [];
+var _fixProfileTargetId = null;
+
+function showUsersScreen(){
+  showScreen('users');
+  loadUsersList();
+}
+
+async function loadUsersList(){
+  var el = document.getElementById('users-list');
+  if(!sb || userRole !== 'admin' || !el) return;
+  try {
+    var { data, error } = await sb.rpc('admin_list_all_users');
+    if(error){
+      console.warn('[Users] load error:', error.message);
+      el.innerHTML = '<div class="empty"><div class="empty-title">Failed to load</div><div class="empty-sub">'+escHtml(error.message)+'</div></div>';
+      return;
+    }
+    _usersCache = data || [];
+    renderUsersList(_usersCache);
+  } catch(e){ console.warn('[Users] error:', e.message); }
+}
+
+function renderUsersList(users){
+  var el = document.getElementById('users-list');
+  if(!el) return;
+  if(!users.length){
+    el.innerHTML = '<div class="empty"><div class="empty-title">No users</div></div>';
+    return;
+  }
+  var html = '';
+  users.forEach(function(u){
+    var hasProfile = !!u.role;
+    var nameLine = hasProfile
+      ? escHtml(u.display_name||'(unnamed)')
+      : '<span style="color:var(--red);font-weight:700">No profile — needs setup</span>';
+    var teamLine = hasProfile ? (u.team_name || 'Unassigned') : '—';
+    var roleLine = hasProfile ? (u.role.charAt(0).toUpperCase()+u.role.slice(1)) : '—';
+    html += '<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:14px;font-weight:700;color:var(--text)">' + nameLine + '</div>'
+      + '<div style="font-size:12px;color:var(--muted);margin-top:2px;word-break:break-all">' + escHtml(u.email) + '</div>'
+      + '<div style="font-size:11px;color:var(--muted);margin-top:6px">Role: ' + roleLine + ' &middot; Team: ' + escHtml(teamLine) + '</div>'
+      + '</div>'
+      + '<button class="btn" style="padding:6px 12px;font-size:11px;flex-shrink:0" onclick="openFixProfileModal(\'' + u.id + '\')">' + (hasProfile?'Edit':'Create Profile') + '</button>'
+      + '</div></div>';
+  });
+  el.innerHTML = html;
+  try{ initCustomScrollbars(); }catch(e){}
+}
+
+function openFixProfileModal(userId){
+  var u = _usersCache.find(function(x){ return x.id === userId; });
+  if(!u) return;
+  _fixProfileTargetId = userId;
+  document.getElementById('fp-title').textContent = u.role ? 'Edit Profile' : 'Create Profile';
+  document.getElementById('fp-email-label').textContent = 'Email: ' + u.email;
+  document.getElementById('fp-name').value = u.display_name || '';
+  document.getElementById('fp-role').value = u.role || 'member';
+  document.getElementById('fp-error').textContent = '';
+  var teamSel = document.getElementById('fp-team');
+  teamSel.innerHTML = '<option value="">No team yet</option>';
+  sb.from('teams').select('id,name').order('name').then(function(res){
+    (res.data||[]).forEach(function(t){
+      var opt = document.createElement('option');
+      opt.value = t.id; opt.textContent = t.name;
+      if(u.team_id === t.id) opt.selected = true;
+      teamSel.appendChild(opt);
+    });
+  });
+  openModal('modal-fix-profile');
+}
+
+async function submitFixProfile(){
+  var name   = (document.getElementById('fp-name').value||'').trim();
+  var role   = document.getElementById('fp-role').value;
+  var teamId = document.getElementById('fp-team').value || null;
+  var errEl  = document.getElementById('fp-error');
+  errEl.textContent = '';
+  if(!name){ errEl.textContent = 'Enter a name'; return; }
+  if(!_fixProfileTargetId){ errEl.textContent = 'No user selected'; return; }
+
+  var { error } = await sb.rpc('admin_create_missing_profile', {
+    p_user_id: _fixProfileTargetId, p_display_name: name, p_role: role, p_team_id: teamId
+  });
+  if(error){ errEl.textContent = error.message; return; }
+  closeModal('modal-fix-profile');
+  showToast('Profile saved','success');
+  loadUsersList();
 }
 
 
