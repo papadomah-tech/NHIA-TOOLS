@@ -613,6 +613,9 @@ html,body{height:100%;overflow:hidden}
     <button class="sidebar-nav-btn" onclick="goHome()" id="sb-home">
       <span>🏠</span> Home
     </button>
+    <button class="sidebar-nav-btn" onclick="showAllAssignmentsScreen()">
+      <span>📁</span> All Assignments
+    </button>
     <button class="sidebar-nav-btn" id="sb-visit" style="display:none" onclick="if(currentVisit) showModules()">
       <span>📋</span> Current Visit
     </button>
@@ -777,6 +780,22 @@ html,body{height:100%;overflow:hidden}
     <div class="field"><label>Person *</label>
       <select id="am-user"><option value="">Select a person…</option></select></div>
     <button class="btn btn-primary" style="width:100%" onclick="adminConfirmAddMember()">Add to Team</button>
+  </div>
+</div>
+
+<!-- ══ ALL ASSIGNMENTS ═══════════════════════════════════════════════ -->
+<div class="screen hidden" id="screen-all-assignments">
+  <div class="topbar">
+    <button class="topbar-back" onclick="goBack()">&#8592;</button>
+    <div class="topbar-title">All Assignments</div>
+  </div>
+  <div style="display:flex;gap:8px;padding:12px 16px 0">
+    <button class="aa-tab active" data-filter="all" onclick="setAllAssignmentsFilter('all')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--accent2);color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">All</button>
+    <button class="aa-tab" data-filter="open" onclick="setAllAssignmentsFilter('open')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Active</button>
+    <button class="aa-tab" data-filter="closed" onclick="setAllAssignmentsFilter('closed')" style="flex:1;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--card);color:var(--text);font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Closed</button>
+  </div>
+  <div class="scroll" style="padding-top:12px">
+    <div id="all-assignments-list"></div>
   </div>
 </div>
 
@@ -1490,7 +1509,7 @@ function dbDel(store,key){if(!db)return Promise.resolve();return new Promise((re
 function dbGetAll(store){if(!db)return Promise.resolve([]);return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);}catch(e){res([]); }});}
 
 // ══ ROUTING ════════════════════════════════════════════════════════════════
-const screens = ['home','assignment-setup','assignment','setup','modules','module','dashboard','sync','report','obs','do-setup','do-modules','do-section','do-report','admin'];
+const screens = ['home','assignment-setup','assignment','setup','modules','module','dashboard','sync','report','obs','do-setup','do-modules','do-section','do-report','admin','all-assignments'];
 let screenStack = ['home'];
 
 function showScreen(id, direction='forward'){
@@ -3929,6 +3948,31 @@ async function closeAssignment(){
 }
 
 // ── Render assignment list on home screen ─────────────────────────────
+async function computeAssignmentCardHtml(a){
+  var total  = a.visitIds.length + (a.doVisitId?1:0);
+  var closed = 0;
+  for(var j=0; j<a.visitIds.length; j++){
+    var v = db ? await dbGet('visits', a.visitIds[j]) : null;
+    if(v && v.closed) closed++;
+  }
+  if(a.doVisitId){
+    var dov = db ? await dbGet('do_visits', a.doVisitId) : null;
+    if(dov && dov.closed) closed++;
+  }
+  var pct = total ? Math.round(closed/total*100) : 0;
+  var statusColor = a.status==='closed' ? '#e05050' : 'var(--accent2)';
+  return '<div data-aid="' + a.id + '" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;cursor:pointer">'
+    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+    + '<div style="font-size:14px;font-weight:700;color:var(--text)">' + a.teamName + '</div>'
+    + '<div style="font-size:10px;font-weight:700;color:' + statusColor + ';text-transform:uppercase">' + a.status + '</div>'
+    + '</div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + a.district + ' &middot; ' + a.startDate + '</div>'
+    + '<div style="height:6px;background:var(--surface);border-radius:3px;overflow:hidden;margin-bottom:4px">'
+    + '<div style="height:100%;background:var(--accent2);border-radius:3px;width:' + pct + '%"></div></div>'
+    + '<div style="font-size:11px;color:var(--muted)">' + closed + '/' + total + ' visits closed &middot; ' + pct + '%</div>'
+    + '</div>';
+}
+
 async function renderAssignmentList(){
   if(!db){ try{ db=await openDB(); }catch(e){ db=null; } }
   var el = document.getElementById('assignments-list');
@@ -3946,35 +3990,62 @@ async function renderAssignmentList(){
   assignments.sort(function(a,b){ return b.createdAt-a.createdAt; });
   var html = '';
   for(var i=0; i<assignments.length; i++){
-    var a = assignments[i];
-    var total  = a.visitIds.length + (a.doVisitId?1:0);
-    var closed = 0;
-    for(var j=0; j<a.visitIds.length; j++){
-      var v = db ? await dbGet('visits', a.visitIds[j]) : null;
-      if(v && v.closed) closed++;
-    }
-    if(a.doVisitId){
-      var dov = db ? await dbGet('do_visits', a.doVisitId) : null;
-      if(dov && dov.closed) closed++;
-    }
-    var pct = total ? Math.round(closed/total*100) : 0;
-    var statusColor = a.status==='closed' ? '#e05050' : 'var(--accent2)';
-    html += '<div data-aid="' + a.id + '" style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px;margin-bottom:8px;cursor:pointer">'
-      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-      + '<div style="font-size:14px;font-weight:700;color:var(--text)">' + a.teamName + '</div>'
-      + '<div style="font-size:10px;font-weight:700;color:' + statusColor + ';text-transform:uppercase">' + a.status + '</div>'
-      + '</div>'
-      + '<div style="font-size:12px;color:var(--muted);margin-bottom:8px">' + a.district + ' &middot; ' + a.startDate + '</div>'
-      + '<div style="height:6px;background:var(--surface);border-radius:3px;overflow:hidden;margin-bottom:4px">'
-      + '<div style="height:100%;background:var(--accent2);border-radius:3px;width:' + pct + '%"></div></div>'
-      + '<div style="font-size:11px;color:var(--muted)">' + closed + '/' + total + ' visits closed &middot; ' + pct + '%</div>'
-      + '</div>';
+    html += await computeAssignmentCardHtml(assignments[i]);
   }
     el.innerHTML = html;
   el.onclick = function(e){
     var card = e.target.closest('[data-aid]');
     if(card) openAssignment(card.getAttribute('data-aid'));
   };
+}
+
+// ══ ALL ASSIGNMENTS (sidebar shortcut, with status filter) ══════════════════
+var _allAssignmentsFilter = 'all';
+
+function showAllAssignmentsScreen(){
+  showScreen('all-assignments');
+  renderAllAssignments();
+}
+
+function setAllAssignmentsFilter(filter){
+  _allAssignmentsFilter = filter;
+  document.querySelectorAll('.aa-tab').forEach(function(btn){
+    var active = btn.getAttribute('data-filter') === filter;
+    btn.style.background = active ? 'var(--accent2)' : 'var(--card)';
+    btn.style.color = active ? '#fff' : 'var(--text)';
+  });
+  renderAllAssignments();
+}
+
+async function renderAllAssignments(){
+  if(!db){ try{ db=await openDB(); }catch(e){ db=null; } }
+  var el = document.getElementById('all-assignments-list');
+  if(!el) return;
+  var assignments = db ? await dbGetAll('assignments') : [];
+
+  if(_allAssignmentsFilter !== 'all'){
+    assignments = assignments.filter(function(a){ return a.status === _allAssignmentsFilter; });
+  }
+
+  if(!assignments.length){
+    el.innerHTML = '<div class="empty"><div class="empty-icon">&#128193;</div>'
+      + '<div class="empty-title">No assignments here</div>'
+      + '<div class="empty-sub">Nothing matches this filter yet.</div></div>';
+    try{ initCustomScrollbars(); }catch(e){}
+    return;
+  }
+
+  assignments.sort(function(a,b){ return b.createdAt-a.createdAt; });
+  var html = '';
+  for(var i=0; i<assignments.length; i++){
+    html += await computeAssignmentCardHtml(assignments[i]);
+  }
+  el.innerHTML = html;
+  el.onclick = function(e){
+    var card = e.target.closest('[data-aid]');
+    if(card) openAssignment(card.getAttribute('data-aid'));
+  };
+  try{ initCustomScrollbars(); }catch(e){}
 }
 
 // ══════════════════════════════════════════════════════════════════════
