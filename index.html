@@ -617,17 +617,6 @@ html,body{height:100%;overflow:hidden}
       <span>📋</span> Current Visit
     </button>
 
-    <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 8px;margin:16px 0 8px">Team</div>
-    <button class="sidebar-nav-btn" onclick="startNewVisit()">
-      <span>➕</span> New Provider Visit
-    </button>
-    <button class="sidebar-nav-btn" onclick="joinTeamVisit()">
-      <span>👥</span> Join a Team Visit
-    </button>
-    <button class="sidebar-nav-btn" id="sb-share" style="display:none" onclick="shareVisit()">
-      <span>🔗</span> Share Visit Link
-    </button>
-
     <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;padding:0 8px;margin:16px 0 8px">District Office</div>
     <button class="sidebar-nav-btn" onclick="startDOVisit()">
       <span>🏢</span> New DO Visit
@@ -666,9 +655,6 @@ html,body{height:100%;overflow:hidden}
     <button onclick="generateReport()" style="margin-top:12px;width:100%;background:rgba(212,172,13,.12);border:1px solid rgba(212,172,13,.35);border-radius:10px;padding:10px 16px;color:var(--gold);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
       📄 Generate Consolidated M&amp;E Report
     </button>
-    <button onclick="joinTeamVisit()" style="margin-top:8px;width:100%;background:rgba(34,181,115,.08);border:1px solid rgba(34,181,115,.3);border-radius:10px;padding:10px 16px;color:var(--accent2);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
-      👥 Join a Team Visit
-    </button>
     <button onclick="startDOVisit()" style="margin-top:8px;width:100%;background:rgba(34,181,115,.08);border:1px solid rgba(34,181,115,.3);border-radius:10px;padding:10px 16px;color:var(--accent2);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
       🏢 New District Office Visit
     </button>
@@ -679,11 +665,7 @@ html,body{height:100%;overflow:hidden}
   <div class="scroll">
     <div class="section-label" id="assignments-header">Monitoring Assignments</div>
     <div id="assignments-list"><div class="empty"><div class="empty-icon">📁</div><div class="empty-title">No assignments yet</div><div class="empty-sub">Loading your team's assignments…</div></div></div>
-    <div class="section-label" style="margin-top:16px">Standalone Visits</div>
-    <div id="visits-list">
-      <div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No provider visits yet</div><div class="empty-sub">Tap "New Visit" below to start a provider monitoring visit.</div></div>
-    </div>
-    <div class="section-label" style="margin-top:8px">District Office Visits</div>
+    <div class="section-label" style="margin-top:16px">District Office Visits</div>
     <div id="do-visits-list">
       <div class="empty"><div class="empty-icon">🏢</div><div class="empty-title">No district office visits yet</div><div class="empty-sub">Tap "New District Office Visit" to begin.</div></div>
     </div>
@@ -917,15 +899,6 @@ html,body{height:100%;overflow:hidden}
       <button onclick="manualPullSync()" style="background:rgba(34,181,115,.12);border:1px solid rgba(34,181,115,.3);border-radius:8px;padding:5px 12px;color:var(--accent2);font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;flex-shrink:0">⟳ Sync</button>
     </div>
 
-    <!-- Visit ID — tap to copy for team sharing -->
-    <div id="mod-visit-id-card" onclick="copyVisitId()"
-         style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:12px;cursor:pointer;display:flex;align-items:center;gap:12px;-webkit-tap-highlight-color:transparent">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:3px">👥 Team Visit ID — tap to copy &amp; share</div>
-        <div id="mod-visit-id-text" style="font-family:'JetBrains Mono',monospace;font-size:12px;font-weight:700;color:var(--accent2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
-      </div>
-      <div style="flex-shrink:0;background:rgba(34,181,115,.12);border:1px solid rgba(34,181,115,.3);border-radius:8px;padding:5px 10px;font-size:11px;font-weight:700;color:var(--accent2)">📋 Copy</div>
-    </div>
     <div class="module-grid" id="module-list"></div>
     <div style="padding-top:8px">
       <button class="btn btn-gold" onclick="showDashboard()">📊 View Score Dashboard</button>
@@ -958,21 +931,6 @@ html,body{height:100%;overflow:hidden}
       <div id="dash-overall-rating"></div>
     </div>
 
-    <!-- Visit ID — tap to copy for team sharing -->
-    <div id="dash-visit-id-card" onclick="copyVisitId()"
-         style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;gap:12px;transition:var(--trans);-webkit-tap-highlight-color:transparent"
-         title="Tap to copy Visit ID">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:10px;color:var(--muted);font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:4px">👥 Team Visit ID — tap to copy</div>
-        <div id="dash-visit-id-text" style="font-family:'JetBrains Mono',monospace;font-size:13px;font-weight:700;color:var(--accent2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">—</div>
-      </div>
-      <div style="flex-shrink:0;background:rgba(34,181,115,.12);border:1px solid rgba(34,181,115,.3);border-radius:8px;padding:6px 12px;font-size:11px;font-weight:700;color:var(--accent2)">
-        📋 Copy
-      </div>
-    </div>
-    <div id="dash-visit-id-hint" style="font-size:11px;color:var(--muted);text-align:center;margin-bottom:12px;padding-bottom:4px">
-      Share this ID with teammates so they can join on their devices
-    </div>
 
     <div class="section-label">Module Scores</div>
     <div id="dash-modules"></div>
@@ -1552,6 +1510,7 @@ function showScreen(id, direction='forward'){
   if(id !== 'modules' && id !== 'dashboard') stopSyncPolling();
   // Update desktop sidebar active state
   try{ updateSidebar(id); }catch(e){}
+  if(id === 'home' && currentUser) refreshMyProfile();
 }
 function goBack(){
   if(screenStack.length>1){
@@ -1561,7 +1520,7 @@ function goBack(){
     showScreen(prev,'back');
   }
 }
-function goHome(){currentModuleId=null; releaseModulePresence(); screenStack=['home'];showScreen('home','back');}
+function goHome(){currentModuleId=null; releaseModulePresence(); screenStack=['home']; showScreen('home','back');}
 
 // ══ CONNECTIVITY ═══════════════════════════════════════════════════════════
 function updateConnStatus(){
@@ -1606,24 +1565,10 @@ async function doLogin(){
 
 async function afterLogin(user){
   currentUser = user;
-  const { data: profile, error: profileErr } = await sb.from('user_profiles').select('role,team_id,display_name').eq('id', user.id).single();
-  console.log('[Login] user.id:', user.id, '| profile:', profile, '| error:', profileErr);
-  userRole   = profile?.role   || 'member';
-  userTeamId = profile?.team_id || null;
-  console.log('[Login] resolved userRole:', userRole, '| userTeamId:', userTeamId);
-
-  // Fetch this user's team name (e.g. "Team Sekondi") for the home screen header
-  userTeamName = '';
-  if(userTeamId){
-    try {
-      const { data: team } = await sb.from('teams').select('name').eq('id', userTeamId).single();
-      userTeamName = team?.name || '';
-    } catch(e){}
-  }
-  updateAssignmentsHeader();
-  applyRoleUI();
+  await refreshMyProfile();
 
   // Update settings default monitor name from profile
+  const { data: profile } = await sb.from('user_profiles').select('display_name').eq('id', user.id).single();
   if(profile?.display_name && !settings.defaultMonitor){
     settings.defaultMonitor = profile.display_name;
     try{ localStorage.setItem('nhia_settings', JSON.stringify(settings)); }catch(e){}
@@ -1635,11 +1580,31 @@ async function afterLogin(user){
   // Subscribe to realtime changes
   subscribeRealtime();
 
-  // Pull this team's assignments from the server so they show up
-  // regardless of which device/person created them
-  loadAssignmentsFromServer();
-
   showToast('Welcome, '+(profile?.display_name||user.email),'success');
+}
+
+// Re-fetches this user's own role, team, and team name from the server,
+// and reloads their assignments. Called at login, whenever they return to
+// Home, and on the periodic sync cycle — so if an admin changes their team
+// (or deletes it) elsewhere, this device catches up on its own instead of
+// showing stale cached data until the next full login.
+async function refreshMyProfile(){
+  if(!sb || !currentUser) return;
+  const { data: profile, error: profileErr } = await sb.from('user_profiles').select('role,team_id,display_name').eq('id', currentUser.id).single();
+  console.log('[Profile] refresh | profile:', profile, '| error:', profileErr);
+  userRole   = profile?.role   || 'member';
+  userTeamId = profile?.team_id || null;
+
+  userTeamName = '';
+  if(userTeamId){
+    try {
+      const { data: team } = await sb.from('teams').select('name').eq('id', userTeamId).single();
+      userTeamName = team?.name || '';
+    } catch(e){}
+  }
+  updateAssignmentsHeader();
+  applyRoleUI();
+  loadAssignmentsFromServer();
 }
 
 async function doLogout(){
@@ -2080,7 +2045,7 @@ setInterval(function(){
   runSync(false).then(function(){
     setTimeout(function(){ pullAllFromSheets(); }, 3000);
   });
-  loadAssignmentsFromServer(); // fallback in case realtime is blocked on this network
+  refreshMyProfile(); // catches team/role changes made elsewhere (e.g. by an admin) without needing to re-login
 }, 25 * 1000);
 
 // 4. SHORT POLL: pull every 30 seconds while modules screen is open
@@ -2112,46 +2077,8 @@ window.addEventListener('online', function(){
 async function renderHomeVisits(){
   // Render assignment list first
   try{ await renderAssignmentList(); }catch(e){ console.warn('Assignment list:', e); }
-  const allVisits=await dbGetAll('visits');
-  const queue=await dbGetAll('sync_queue');
-  const pendingIds=new Set(queue.map(function(q){return q.id;}));
-  const el=document.getElementById('visits-list');
   // Also render DO visits
   await renderDOVisitList();
-
-  // Only show visits with NO assignmentId as standalone
-  const visits = allVisits.filter(function(v){ return !v.assignmentId; });
-
-  if(!visits.length){
-    el.innerHTML='<div class="empty"><div class="empty-icon">\uD83D\uDCCB</div><div class="empty-title">No standalone visits</div><div class="empty-sub">Visits created via an Assignment appear inside that assignment.</div></div>';
-    try{ initCustomScrollbars(); }catch(e){}
-    return;
-  }
-  visits.sort(function(a,b){return b.createdAt-a.createdAt;});
-  el.innerHTML=visits.map(function(v){
-    var status=v.syncedAt?'synced':pendingIds.has(v.id)?'pending':'draft';
-    var label={synced:'Synced \u2713',pending:'Pending Sync',draft:'Draft'}[status];
-    var progress=calcOverallProgress(v);
-    var vName=(v.setup&&v.setup.providerName)||'Unnamed Provider';
-    var vType=(v.setup&&v.setup.providerType)||'';
-    var vDate=formatDate(v.setup&&v.setup.date);
-    return '<div class="visit-card '+status+'" style="position:relative">'
-      + '<div onclick="openVisit(\''+v.id+'\')" style="cursor:pointer">'
-      + '<div class="visit-card-top">'
-      + '<div class="visit-name">'+vName+'</div>'
-      + '<div class="visit-badge '+status+'">'+label+'</div>'
-      + '</div>'
-      + '<div class="visit-meta">'+vType+' \u00B7 '+vDate+'</div>'
-      + '<div class="visit-progress"><div class="visit-progress-bar" style="width:'+progress+'%"></div></div>'
-      + '</div>'
-      + '<button data-delvid="'+v.id+'" style="position:absolute;top:10px;right:10px;background:rgba(224,80,80,.12);border:1px solid rgba(224,80,80,.3);border-radius:6px;width:26px;height:26px;color:#e05050;font-size:14px;cursor:pointer;font-family:inherit;display:flex;align-items:center;justify-content:center" title="Delete visit">\uD83D\uDDD1</button>'
-      + '</div>';
-  }).join('');
-
-  el.onclick = function(e){
-    var btn = e.target.closest('[data-delvid]');
-    if(btn){ e.stopPropagation(); deleteVisit(btn.getAttribute('data-delvid'), false); }
-  };
   try{ initCustomScrollbars(); }catch(e){}
 }
 
@@ -2166,20 +2093,6 @@ function calcOverallProgress(visit){
 }
 
 // ══ NEW VISIT ══════════════════════════════════════════════════════════════
-function startNewVisit(){
-  // Ensure DB is ready — reinitialise if init() failed earlier
-  if(!db){ openDB().then(d=>{db=d;}).catch(()=>{}); }
-  currentVisit={id:'v_'+Date.now(),createdAt:Date.now(),setup:{},modules:{}};
-  // Pre-fill from settings
-  const mon=document.getElementById('f-monitor');
-  const reg=document.getElementById('f-region');
-  const dat=document.getElementById('f-date');
-  if(mon) mon.value=settings.defaultMonitor||'';
-  if(reg) reg.value=settings.defaultRegion||'';
-  if(dat) dat.value=new Date().toISOString().slice(0,10);
-  showScreen('setup');
-}
-
 function getGPS(){
   if(!navigator.geolocation){showToast('GPS not available','error');return;}
   navigator.geolocation.getCurrentPosition(
@@ -2245,9 +2158,6 @@ function showModules(){
   }
   document.getElementById('mod-nav-title').textContent=(currentVisit.setup&&currentVisit.setup.providerName)||'Visit';
   document.getElementById('mod-nav-sub').textContent=(currentVisit.setup&&currentVisit.setup.providerType)||'';
-  // Populate Visit ID in module navigator card
-  const midEl=document.getElementById('mod-visit-id-text');
-  if(midEl) midEl.textContent=currentVisit.id||'—';
   renderModuleList();
   renderRing();
   showScreen('modules');
@@ -3575,177 +3485,6 @@ function pad(str, len){
 
 
 // ══════════════════════════════════════════════════════════════════════
-
-
-// ══════════════════════════════════════════════════════════════════════
-// TEAM VISIT SHARING — NHIA TEXT CODE SYSTEM
-// Self-contained code. No external services. Works offline.
-// ══════════════════════════════════════════════════════════════════════
-
-function makeVisitCode(visit){
-  var s=visit.setup||{};
-  var p={i:visit.id||'',t:s.providerName||'',y:s.providerType||'',
-    r:s.region||'',o:s.office||'',d:s.date||'',v:s.visitType||'',
-    m:s.leadMonitor||'',c:visit.createdAt||Date.now()};
-  try{return 'NHIA:'+btoa(JSON.stringify(p)).replace(/[+]/g,'-').replace(/[/]/g,'_').replace(/=+$/,'');}
-  catch(e){return 'NHIAU:'+btoa(encodeURIComponent(JSON.stringify(p))).replace(/[+]/g,'-').replace(/[/]/g,'_').replace(/=+$/,'');}
-}
-
-function parseVisitCode(raw){
-  raw=(raw||'').trim().replace(/\s/g,'');
-  // Handle full URL pastes (e.g. user pastes the QR link instead of the NHIA: code)
-  if(raw.indexOf('http')===0){
-    try{
-      var urlObj=new URL(raw);
-      var jParam=urlObj.searchParams.get('join');
-      if(jParam){ raw=jParam; }  // extract the code from ?join=
-    }catch(e){}
-  }
-  var enc='',uri=false;
-  if(raw.indexOf('NHIAU:')===0){enc=raw.substring(6);uri=true;}
-  else if(raw.indexOf('NHIA:')===0){enc=raw.substring(5);}
-  else{throw new Error('Code must start with NHIA: — copy the full code from Team Leader');}
-  var b64=enc.replace(/-/g,'+').replace(/_/g,'/');
-  while(b64.length%4)b64+='=';
-  var str;
-  try{str=atob(b64);}catch(e){throw new Error('Corrupt code — ask Team Leader to reshare');}
-  var p;
-  try{p=JSON.parse(uri?decodeURIComponent(str):str);}catch(e){throw new Error('Invalid code — copy the full NHIA: code');}
-  if(!p.i)throw new Error('Code missing visit ID');
-  return{id:p.i,createdAt:p.c||Date.now(),joinedAt:Date.now(),
-    setup:{providerName:p.t||'',providerType:p.y||'',region:p.r||'',
-      office:p.o||'',date:p.d||'',visitType:p.v||'',leadMonitor:p.m||''},
-    modules:{}};
-}
-
-function _mkBtn(label,bg,color,cb){
-  var b=document.createElement('button');
-  b.textContent=label;
-  b.style.cssText='width:100%;background:'+bg+';color:'+color+';border:none;border-radius:10px;'
-    +'padding:14px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-bottom:10px;display:block';
-  b.onclick=cb;return b;
-}
-
-function _fallbackCopy(txt){
-  var ta=document.createElement('textarea');
-  ta.value=txt;ta.style.cssText='position:fixed;top:-999px;opacity:0';
-  document.body.appendChild(ta);ta.focus();ta.select();
-  try{document.execCommand('copy');showToast('Code copied','success');}
-  catch(e){showToast('Long-press the code box to copy','');}
-  document.body.removeChild(ta);
-}
-
-function shareVisitId(){if(!currentVisit){showToast('No active visit','error');return;}showVisitShareModal();}
-function copyVisitId(){showVisitShareModal();}
-
-async function showVisitShareModal(){
-  if(!currentVisit){showToast('No active visit','error');return;}
-  var code=makeVisitCode(currentVisit);
-  var name=(currentVisit.setup&&currentVisit.setup.providerName)||'';
-  // QR must encode an https:// URL so cameras open it (not copy it as text)
-  // Use the configured app URL + ?join=<code> as a query param
-  var appBase = (settings.appUrl || 'https://papadomah-tech.github.io/papadomah-apps/index.html')
-    .replace(/#.*$/, '').replace(/\/$/, '');
-  var joinUrl  = appBase + '?join=' + encodeURIComponent(code);
-  var qrUrl    = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&ecc=L&margin=8&data='
-                 + encodeURIComponent(joinUrl);
-  var modal=document.createElement('div');
-  modal.id='visit-share-modal';
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9999;display:flex;align-items:flex-end;justify-content:center';
-  var inner=document.createElement('div');
-  inner.style.cssText='background:var(--surface);border-radius:20px 20px 0 0;padding:20px 18px 36px;width:100%;max-width:480px;max-height:92vh;overflow-y:auto';
-  modal.appendChild(inner);document.body.appendChild(modal);
-  modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
-  inner.innerHTML='<div style="width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 16px"></div>'
-    +'<div style="font-size:15px;font-weight:700;color:var(--text);margin-bottom:3px">Share Visit with Team</div>'
-    +'<div style="font-size:12px;color:var(--muted);margin-bottom:14px">'+name+'</div>'
-    +'<div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px">'
-    +'<div><img id="vshare-qr" style="width:96px;height:96px;border-radius:8px;border:2px solid var(--border);background:#fff"/>'
-    +'<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:3px">Scan QR</div></div>'
-    +'<div style="font-size:12px;color:var(--text);line-height:1.9">'
-    +'<strong>Teammates:</strong><br>1. Open NHIA Monitor app<br>'
-    +'2. Tap <strong>&#128101; Join a Team Visit</strong><br>'
-    +'3. Paste the code below<br>4. Select your module</div></div>'
-    +'<div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;margin-bottom:5px">'
-    +'Visit Code &#8212; tap &amp; hold to select, then copy</div>'
-    +'<div id="vshare-code" style="background:var(--card);border:1.5px solid var(--accent2);border-radius:10px;'
-    +'padding:12px 14px;font-size:11px;font-family:JetBrains Mono,monospace;color:var(--accent2);'
-    +'word-break:break-all;line-height:1.6;margin-bottom:14px;user-select:all;-webkit-user-select:all;cursor:text"></div>';
-  var codeEl=document.getElementById('vshare-code');
-  if(codeEl)codeEl.textContent=code;
-  var qrEl=document.getElementById('vshare-qr');
-  if(qrEl){qrEl.onerror=function(){this.style.display='none';};qrEl.src=qrUrl;}
-  inner.appendChild(_mkBtn('&#128203; Copy Code','var(--accent)','#fff',function(){
-    var txt=codeEl?codeEl.textContent:code;
-    if(navigator.clipboard){navigator.clipboard.writeText(txt).then(function(){showToast('Code copied','success');}).catch(function(){_fallbackCopy(txt);});}
-    else{_fallbackCopy(txt);}
-  }));
-  var sb=_mkBtn('&#128228; Share via WhatsApp / SMS','var(--surface)','var(--text)',function(){
-    var msg='Join NHIA visit for '+name+'.\n\nOpen NHIA Monitor app, tap Join a Team Visit, paste this code:\n\n'+code;
-    if(navigator.share){navigator.share({title:'NHIA Visit Code',text:msg}).catch(function(){});}
-    else{window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');}
-  });
-  sb.style.border='1px solid var(--border)';inner.appendChild(sb);
-  var cb=_mkBtn('Close','transparent','var(--muted)',function(){modal.remove();});
-  cb.style.fontSize='13px';cb.style.padding='8px';inner.appendChild(cb);
-}
-
-async function joinTeamVisit(){
-  var modal=document.createElement('div');
-  modal.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  var box=document.createElement('div');
-  box.style.cssText='background:var(--surface);border-radius:16px;padding:24px;width:100%;max-width:400px';
-  box.innerHTML='<div style="font-size:17px;font-weight:700;color:var(--text);margin-bottom:8px">Join a Team Visit</div>'
-    +'<div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6">'
-    +'Paste the full code from your Team Leader.<br>'
-    +'Starts with <strong style="color:var(--accent2);font-family:JetBrains Mono,monospace">NHIA:</strong></div>'
-    +'<textarea id="jtv-input" rows="5" autocomplete="off" autocorrect="off" spellcheck="false"'
-    +' placeholder="Paste code here (starts with NHIA:...)"'
-    +' style="width:100%;background:var(--card);border:2px solid var(--accent2);border-radius:10px;'
-    +'padding:12px;font-size:11px;font-family:JetBrains Mono,monospace;color:var(--text);'
-    +'outline:none;resize:vertical;box-sizing:border-box;line-height:1.5;'
-    +'-webkit-user-select:text;user-select:text"></textarea>'
-    +'<div id="jtv-err" style="color:#e05050;font-size:12px;margin-top:6px;display:none;line-height:1.4"></div>';
-  modal.appendChild(box);document.body.appendChild(modal);
-  modal.addEventListener('click',function(e){if(e.target===modal)modal.remove();});
-  var jb=_mkBtn('Join Visit','var(--accent)','#fff',async function(){
-    var raw=(document.getElementById('jtv-input').value||'').trim();
-    var err=document.getElementById('jtv-err');
-    err.style.display='none';
-    if(!raw){err.textContent='Paste the visit code first';err.style.display='block';return;}
-    jb.textContent='Joining...';jb.disabled=true;
-    try{
-      var visit=parseVisitCode(raw);
-      if(!db){try{db=await openDB();}catch(e){db=null;}}
-      if(db){try{await dbPut('visits',visit);}catch(e){console.warn(e);}}
-      currentVisit=visit;modal.remove();
-      // Show modules immediately with empty state
-      showModules();
-      // Then pull full module state from Sheets so TM2 sees TM1's progress
-      if(navigator.onLine && currentUser){
-        jb.textContent='Fetching team progress...';
-        pullFromSheets(visit.id).then(function(){
-          // Reload visit from DB after pull (it may have been updated)
-          dbGet('visits', visit.id).then(function(refreshed){
-            if(refreshed){ currentVisit=refreshed; showModules(); }
-            showToast('Joined: '+(visit.setup.providerName||'visit')+' - team data loaded','success');
-          });
-        }).catch(function(){
-          showToast('Joined: '+(visit.setup.providerName||'visit')+' - sync when online','success');
-        });
-      } else {
-        setTimeout(function(){showToast('Joined: '+(visit.setup.providerName||'visit')+' - will sync when online','success');},300);
-      }
-    }catch(e){
-      err.innerHTML=(e.message||'Invalid code').replace(/</g,'&lt;');
-      err.style.display='block';jb.textContent='Join Visit';jb.disabled=false;
-    }
-  });
-  var cb=_mkBtn('Cancel','transparent','var(--muted)',function(){modal.remove();});
-  cb.style.fontSize='13px';cb.style.padding='8px';
-  box.appendChild(jb);box.appendChild(cb);
-  setTimeout(function(){var el=document.getElementById('jtv-input');if(el)el.focus();},200);
-}
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -5280,42 +5019,6 @@ async function init(){
       navigator.serviceWorker.addEventListener('message',e=>{
         if(e.data&&e.data.type==='SYNCED') renderHomeVisits();
       });
-    }
-  } catch(e){}
-
-  // Settings gear button on home topbar
-  // Check if opened via a team visit share link
-
-  // Auto-join from QR scan: check ?join= query parameter
-  try {
-    var _urlParams = new URLSearchParams(window.location.search);
-    var _joinCode  = _urlParams.get('join');
-    if(_joinCode){
-      // Clean URL immediately so refresh doesn't re-trigger
-      history.replaceState(null, '', window.location.pathname);
-      // Attempt to seed the visit
-      (async function(){
-        try {
-          var _visit = parseVisitCode(_joinCode);
-          if(!db){ try{ db = await openDB(); }catch(e){ db=null; } }
-          if(db){ try{ await dbPut('visits', _visit); }catch(e){} }
-          currentVisit = _visit;
-          showModules();
-          // Pull team progress immediately after QR join
-          if(navigator.onLine && currentUser){
-            pullFromSheets(_visit.id).then(function(){
-              dbGet('visits', _visit.id).then(function(refreshed){
-                if(refreshed){ currentVisit=refreshed; showModules(); }
-              });
-            }).catch(function(){});
-          }
-          setTimeout(function(){
-            showToast('Joined: '+(_visit.setup.providerName||'visit')+' — team data loading...','success');
-          }, 400);
-        } catch(e) {
-          showToast('QR join failed: '+(e.message||'invalid code'),'error');
-        }
-      })();
     }
   } catch(e){}
 
