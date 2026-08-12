@@ -45,7 +45,35 @@ html,body{height:100%;overflow:hidden}
   max-width:480px;
   margin:0 auto;
 }
-#desktop-sidebar{display:none}
+#desktop-sidebar{
+  display:flex;
+  flex-direction:column;
+  background:var(--card);
+  position:fixed;
+  top:0; left:0;
+  width:260px;
+  max-width:80vw;
+  height:100vh;
+  z-index:300;
+  transform:translateX(-100%);
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+  box-shadow:0 0 24px rgba(0,0,0,.15);
+  overflow-y:auto;
+}
+#desktop-sidebar.mobile-open{transform:translateX(0)}
+#mobile-sidebar-backdrop{
+  display:none;
+  position:fixed; inset:0;
+  background:rgba(0,0,0,.4);
+  z-index:290;
+}
+#mobile-sidebar-backdrop.visible{display:block}
+#mobile-hamburger-btn{
+  position:absolute; top:16px; left:16px; z-index:50;
+  background:var(--card); border:1px solid var(--border); border-radius:50%;
+  width:36px; height:36px; display:flex; align-items:center; justify-content:center;
+  font-size:16px; cursor:pointer; box-shadow:var(--shadow);
+}
 #desktop-main{
   position:absolute;
   inset:0;
@@ -77,6 +105,8 @@ html,body{height:100%;overflow:hidden}
 @media(min-width:768px){
   html,body{overflow:hidden}
   #mobile-settings-gear{display:none}
+  #mobile-hamburger-btn{display:none}
+  #mobile-sidebar-backdrop{display:none !important}
   #app{
     max-width:100%;
     width:100%;
@@ -94,6 +124,10 @@ html,body{height:100%;overflow:hidden}
     height:100vh;
     overflow-y:auto;
     position:relative;
+    top:auto; left:auto;
+    width:auto; max-width:none;
+    transform:none;
+    box-shadow:none;
     z-index:10;
   }
   #desktop-main{
@@ -159,6 +193,9 @@ html,body{height:100%;overflow:hidden}
 
 /* ── Home screen ── */
 .hero{padding:28px 20px 24px;background:linear-gradient(160deg,var(--ink2) 0%,var(--surface) 100%);border-bottom:1px solid var(--border);flex-shrink:0}
+@media(max-width:767px){
+  .hero{padding-top:56px}
+}
 .hero-badge{display:inline-flex;align-items:center;gap:6px;background:rgba(212,172,13,.12);border:1px solid rgba(212,172,13,.3);border-radius:20px;padding:4px 12px;margin-bottom:14px}
 .hero-badge span{font-size:11px;color:var(--gold);font-weight:600;letter-spacing:.06em}
 .hero h1{font-size:22px;font-weight:700;line-height:1.25;color:var(--text)}
@@ -599,6 +636,7 @@ html,body{height:100%;overflow:hidden}
 <div id="app">
 
 <!-- ══ DESKTOP SIDEBAR (hidden on mobile/tablet via CSS) ══════════════ -->
+<div id="mobile-sidebar-backdrop" onclick="closeMobileSidebar()"></div>
 <div id="desktop-sidebar">
   <div style="padding:24px 20px 16px;border-bottom:1px solid var(--border)">
     <div style="text-align:center">
@@ -649,6 +687,7 @@ html,body{height:100%;overflow:hidden}
 
 <!-- ══ HOME SCREEN ══════════════════════════════════════════════════ -->
 <div class="screen" id="screen-home">
+  <button id="mobile-hamburger-btn" onclick="openMobileSidebar()" title="Menu">&#9776;</button>
   <div class="hero">
 <div class="hero-badge"><span>NHIA M&amp;E TOOL</span></div>
     <h1>Provider Monitoring</h1>
@@ -4859,6 +4898,30 @@ function closeSettings(e){
 }
 
 function openModal(id){ var el=document.getElementById(id); if(el) el.classList.add('open'); }
+
+// ── Mobile sidebar drawer ──────────────────────────────────────────────
+// Below the 768px desktop breakpoint the sidebar is a slide-in drawer
+// rather than a permanently visible column — this opens/closes it.
+function openMobileSidebar(){
+  var sb2 = document.getElementById('desktop-sidebar');
+  var bd  = document.getElementById('mobile-sidebar-backdrop');
+  if(sb2) sb2.classList.add('mobile-open');
+  if(bd)  bd.classList.add('visible');
+}
+function closeMobileSidebar(){
+  var sb2 = document.getElementById('desktop-sidebar');
+  var bd  = document.getElementById('mobile-sidebar-backdrop');
+  if(sb2) sb2.classList.remove('mobile-open');
+  if(bd)  bd.classList.remove('visible');
+}
+// Auto-close the drawer once a nav item is tapped, so the person lands
+// on the screen they picked instead of the menu staying open over it.
+// Harmless no-op on desktop, where the drawer classes have no visual
+// effect (sidebar is always visible there).
+document.addEventListener('click', function(e){
+  if(e.target.closest('#desktop-sidebar .sidebar-nav-btn')) closeMobileSidebar();
+});
+
 function closeModal(id){ var el=document.getElementById(id); if(el) el.classList.remove('open'); }
 
 // ══ ADMIN: TEAM SETUP ═══════════════════════════════════════════════════════
@@ -5548,7 +5611,7 @@ async function init(){
     const gear=document.createElement('button');
     gear.id='mobile-settings-gear';
     gear.innerHTML='⚙️';
-    gear.style.cssText='position:absolute;top:52px;right:16px;background:var(--card);border:1px solid var(--border);border-radius:50%;width:36px;height:36px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5';
+    gear.style.cssText='position:absolute;top:16px;right:16px;background:var(--card);border:1px solid var(--border);border-radius:50%;width:36px;height:36px;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:50';
     gear.onclick=openSettings;
     const homeScreen=document.getElementById('screen-home');
     if(homeScreen){homeScreen.style.position='relative';homeScreen.appendChild(gear);}
