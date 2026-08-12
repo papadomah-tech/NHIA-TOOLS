@@ -4440,6 +4440,9 @@ async function deleteVisit(visitId, fromAssignment){
     }
   }
   await dbDel('visits', visitId);
+  if(sb && navigator.onLine){
+    try { await sb.from('visit_syncs').delete().eq('visit_id', visitId); } catch(e){}
+  }
   showToast('Visit deleted','success');
   if(fromAssignment && currentAssignment){
     renderAssignmentScreen();
@@ -4476,8 +4479,16 @@ async function deleteAssignment(assignmentId){
   // Delete all child visits
   for(var i=0; i<a.visitIds.length; i++){
     await dbDel('visits', a.visitIds[i]);
+    if(sb && navigator.onLine){
+      try { await sb.from('visit_syncs').delete().eq('visit_id', a.visitIds[i]); } catch(e){}
+    }
   }
-  if(a.doVisitId) await dbDel('do_visits', a.doVisitId);
+  if(a.doVisitId){
+    await dbDel('do_visits', a.doVisitId);
+    if(sb && navigator.onLine){
+      try { await sb.from('visit_syncs').delete().eq('visit_id', a.doVisitId); } catch(e){}
+    }
+  }
   await dbDel('assignments', assignmentId);
   if(sb && currentUser && navigator.onLine){
     try { await sb.from('assignments').delete().eq('id', assignmentId); } catch(e){}
