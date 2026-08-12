@@ -643,13 +643,13 @@ html,body{height:100%;overflow:hidden}
     <button onclick="startDOVisit()" style="margin-top:8px;width:100%;background:rgba(34,181,115,.08);border:1px solid rgba(34,181,115,.3);border-radius:10px;padding:10px 16px;color:var(--accent2);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
       🏢 New District Office Visit
     </button>
-    <button onclick="startNewAssignment()" style="margin-top:8px;width:100%;background:rgba(212,172,13,.12);border:1px solid rgba(212,172,13,.35);border-radius:10px;padding:10px 16px;color:var(--gold);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
+    <button id="hero-new-assignment-btn" onclick="startNewAssignment()" style="margin-top:8px;width:100%;background:rgba(212,172,13,.12);border:1px solid rgba(212,172,13,.35);border-radius:10px;padding:10px 16px;color:var(--gold);font-size:13px;font-weight:700;font-family:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px">
       ➕ New Assignment
     </button>
   </div>
   <div class="scroll">
-    <div class="section-label">Monitoring Assignments</div>
-    <div id="assignments-list"><div class="empty"><div class="empty-icon">📁</div><div class="empty-title">No assignments yet</div><div class="empty-sub">Tap ⬆ New Assignment to begin a monitoring period.</div></div></div>
+    <div class="section-label" id="assignments-header">Monitoring Assignments</div>
+    <div id="assignments-list"><div class="empty"><div class="empty-icon">📁</div><div class="empty-title">No assignments yet</div><div class="empty-sub">Loading your team's assignments…</div></div></div>
     <div class="section-label" style="margin-top:16px">Standalone Visits</div>
     <div id="visits-list">
       <div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No provider visits yet</div><div class="empty-sub">Tap "New Visit" below to start a provider monitoring visit.</div></div>
@@ -659,7 +659,7 @@ html,body{height:100%;overflow:hidden}
       <div class="empty"><div class="empty-icon">🏢</div><div class="empty-title">No district office visits yet</div><div class="empty-sub">Tap "New District Office Visit" to begin.</div></div>
     </div>
   </div>
-  <button class="fab" onclick="startNewAssignment()">＋ New Assignment</button>
+  <button class="fab" id="fab-new-assignment-btn" onclick="startNewAssignment()">＋ New Assignment</button>
 </div>
 
 <!-- ══ ASSIGNMENT SETUP ════════════════════════════════════════════════ -->
@@ -1387,7 +1387,7 @@ try {
   }
 } catch(e){}
 let sb = null;
-let currentUser = null, userRole = null, userTeamId = null;
+let currentUser = null, userRole = null, userTeamId = null, userTeamName = '';
 
 let db, currentVisit = null, currentModuleId = null;
 let settings = {appUrl:'https://nhia-tools.vercel.app'}; try { var _s=JSON.parse(localStorage.getItem('nhia_settings')||'{}'); settings=Object.assign(settings,_s); if(!settings.appUrl) settings.appUrl='https://nhia-tools.vercel.app'; } catch(e) { settings={appUrl:'https://nhia-tools.vercel.app'}; }
@@ -1422,7 +1422,17 @@ function dbPut(store,val){if(!db)return Promise.resolve(val);
     if(!val._dirtyModules) val._dirtyModules=[];
     if(val._dirtyModules.indexOf(currentModuleId)===-1) val._dirtyModules.push(currentModuleId);
   }
+  // Assignment sync: any local create/edit of an assignment (by a Team
+  // Leader) pushes to Supabase so the whole team sees it, not just this
+  // device. loadAssignmentsFromServer() uses dbPutRaw() below instead,
+  // so pulling server data never re-triggers a push (no ping-pong loop).
+  if(store==='assignments' && val && val.id){
+    pushAssignmentToServer(val);
+  }
   return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readwrite');const r=tx.objectStore(store).put(val);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){res(val);}});}
+// Same as dbPut but skips all sync side-effects — used when writing data
+// that just came FROM the server, to avoid re-uploading it right back.
+function dbPutRaw(store,val){if(!db)return Promise.resolve(val);return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readwrite');const r=tx.objectStore(store).put(val);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error);}catch(e){res(val);}});}
 function dbDel(store,key){if(!db)return Promise.resolve();return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readwrite');const r=tx.objectStore(store).delete(key);r.onsuccess=()=>res();r.onerror=()=>rej(r.error);}catch(e){res();}});}
 function dbGetAll(store){if(!db)return Promise.resolve([]);return new Promise((res,rej)=>{try{const tx=db.transaction(store,'readonly');const r=tx.objectStore(store).getAll();r.onsuccess=()=>res(r.result||[]);r.onerror=()=>rej(r.error);}catch(e){res([]); }});}
 
@@ -1505,6 +1515,17 @@ async function afterLogin(user){
   userRole   = profile?.role   || 'member';
   userTeamId = profile?.team_id || null;
 
+  // Fetch this user's team name (e.g. "Team Sekondi") for the home screen header
+  userTeamName = '';
+  if(userTeamId){
+    try {
+      const { data: team } = await sb.from('teams').select('name').eq('id', userTeamId).single();
+      userTeamName = team?.name || '';
+    } catch(e){}
+  }
+  updateAssignmentsHeader();
+  applyRoleUI();
+
   // Update settings default monitor name from profile
   if(profile?.display_name && !settings.defaultMonitor){
     settings.defaultMonitor = profile.display_name;
@@ -1516,6 +1537,10 @@ async function afterLogin(user){
 
   // Subscribe to realtime changes
   subscribeRealtime();
+
+  // Pull this team's assignments from the server so they show up
+  // regardless of which device/person created them
+  loadAssignmentsFromServer();
 
   showToast('Welcome, '+(profile?.display_name||user.email),'success');
 }
@@ -1564,6 +1589,12 @@ function subscribeRealtime(){
           });
         }
       });
+    })
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'assignments' }, function(payload){
+      // New/updated/deleted assignment (from Admin or a teammate) — refresh
+      if(!payload.new || payload.new.team_id === userTeamId || (payload.old && payload.old.team_id === userTeamId)){
+        loadAssignmentsFromServer();
+      }
     })
     .subscribe();
 }
@@ -1643,6 +1674,113 @@ function getModuleLock(moduleId){
   if(!lock) return null;
   if(Date.now() - lock.ts > PRESENCE_STALE_MS) return null; // stale — treat as free
   return lock;
+}
+
+// ══ SUPABASE SYNC ══════════════════════════════════════════════════════════
+var _syncInProgress = false;
+
+function updateAssignmentsHeader(){
+  var el = document.getElementById('assignments-header');
+  if(el) el.textContent = userTeamName ? userTeamName + ' — Monitoring Assignments' : 'Monitoring Assignments';
+}
+
+// Only Team Leaders can create assignments (server RLS enforces this too —
+// this just keeps a Member from tapping a button that would silently fail
+// to sync to the rest of the team).
+function applyRoleUI(){
+  var isLeader = userRole === 'leader';
+  var hero = document.getElementById('hero-new-assignment-btn');
+  var fab  = document.getElementById('fab-new-assignment-btn');
+  if(hero) hero.style.display = isLeader ? '' : 'none';
+  if(fab)  fab.style.display  = isLeader ? '' : 'none';
+}
+
+// ── Team Assignments: server sync ────────────────────────────────────────
+// Assignments are created either by the Admin (direct SQL) or a Team
+// Leader (in-app). Either way they must reach every team member's device,
+// so they're upserted to Supabase on every local change and pulled on
+// login / realtime update / periodic refresh.
+
+function _assignmentToServerRow(a){
+  return {
+    id:             a.id,
+    team_id:        userTeamId,
+    team_name:      a.teamName || '',
+    leader:         a.leader || '',
+    members:        a.members || [],
+    district:       a.district || '',
+    region:         a.region || '',
+    start_date:     a.startDate || null,
+    end_date:       a.endDate || null,
+    facility_count: a.facilityCount || 0,
+    visit_ids:      a.visitIds || [],
+    do_visit_id:    a.doVisitId || null,
+    status:         a.status || 'open',
+    created_by:     currentUser ? currentUser.id : null,
+  };
+}
+
+function _serverRowToAssignment(row){
+  return {
+    id:            row.id,
+    createdAt:     row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    status:        row.status || 'open',
+    teamName:      row.team_name || '',
+    leader:        row.leader || '',
+    members:       row.members || [],
+    district:      row.district || '',
+    region:        row.region || '',
+    startDate:     row.start_date || '',
+    endDate:       row.end_date || '',
+    facilityCount: row.facility_count || 0,
+    visitIds:      row.visit_ids || [],
+    doVisitId:     row.do_visit_id || null,
+    _serverUpdatedAt: row.updated_at ? new Date(row.updated_at).getTime() : 0,
+  };
+}
+
+async function pushAssignmentToServer(assignment){
+  if(!sb || !currentUser || !userTeamId || !navigator.onLine) return;
+  try {
+    var { error } = await sb.from('assignments').upsert(_assignmentToServerRow(assignment), { onConflict: 'id' });
+    if(error) console.warn('[Assignments] push failed:', error.message);
+  } catch(e){ console.warn('[Assignments] push error:', e.message); }
+}
+
+async function loadAssignmentsFromServer(){
+  if(!sb || !currentUser || !userTeamId) return;
+  try {
+    var { data, error } = await sb.from('assignments').select('*').eq('team_id', userTeamId);
+    if(error || !data) return;
+    if(!db){ try{ db=await openDB(); }catch(e){ db=null; } }
+    if(!db) return;
+
+    for(var i=0; i<data.length; i++){
+      var incoming = _serverRowToAssignment(data[i]);
+      var local = await dbGet('assignments', incoming.id);
+      // Last-write-wins by server updated_at vs local's own last-known value.
+      // A brand-new local assignment (not yet pushed) is never overwritten
+      // here — it gets pushed instead the next time it's saved.
+      if(!local || (incoming._serverUpdatedAt >= (local._serverUpdatedAt||0))){
+        await dbPutRaw('assignments', incoming);
+      }
+      // Hydrate any visits this device doesn't have locally yet, so a
+      // teammate who joins an Admin- or leader-created assignment can
+      // immediately see the facility visits inside it.
+      var allVisitIds = (incoming.visitIds||[]).slice();
+      if(incoming.doVisitId) allVisitIds.push(incoming.doVisitId);
+      for(var j=0; j<allVisitIds.length; j++){
+        var vid = allVisitIds[j];
+        var storeGuess = (incoming.doVisitId===vid) ? 'do_visits' : 'visits';
+        var existing = await dbGet(storeGuess, vid);
+        if(!existing){
+          await dbPutRaw(storeGuess, { id: vid, createdAt: Date.now(), setup:{}, modules:{}, assignmentId: incoming.id });
+          if(navigator.onLine) pullFromSheets(vid);
+        }
+      }
+    }
+    renderAssignmentList();
+  } catch(e){ console.warn('[Assignments] load error:', e.message); }
 }
 
 
@@ -1835,6 +1973,7 @@ setInterval(function(){
   runSync(false).then(function(){
     setTimeout(function(){ pullAllFromSheets(); }, 3000);
   });
+  loadAssignmentsFromServer(); // fallback in case realtime is blocked on this network
 }, 25 * 1000);
 
 // 4. SHORT POLL: pull every 30 seconds while modules screen is open
@@ -3920,9 +4059,12 @@ async function renderAssignmentList(){
   if(!el) return;
   var assignments = db ? await dbGetAll('assignments') : [];
   if(!assignments.length){
+    var subMsg = (userRole==='leader')
+      ? 'Tap &#10133; New Assignment to begin a monitoring period.'
+      : 'Your Team Leader or Admin hasn\'t created one yet. Check back soon.';
     el.innerHTML = '<div class="empty"><div class="empty-icon">&#128193;</div>'
       + '<div class="empty-title">No assignments yet</div>'
-      + '<div class="empty-sub">Tap &#10133; New Assignment to begin a monitoring period.</div></div>';
+      + '<div class="empty-sub">' + subMsg + '</div></div>';
     return;
   }
   assignments.sort(function(a,b){ return b.createdAt-a.createdAt; });
@@ -4200,6 +4342,9 @@ async function deleteAssignment(assignmentId){
   }
   if(a.doVisitId) await dbDel('do_visits', a.doVisitId);
   await dbDel('assignments', assignmentId);
+  if(sb && currentUser && navigator.onLine){
+    try { await sb.from('assignments').delete().eq('id', assignmentId); } catch(e){}
+  }
   if(currentAssignment && currentAssignment.id === assignmentId) currentAssignment = null;
   showToast('Assignment deleted','success');
   goHome();
