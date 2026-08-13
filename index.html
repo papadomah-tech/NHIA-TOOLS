@@ -853,6 +853,33 @@ html,body{height:100%;overflow:hidden}
   </div>
 </div>
 
+<!-- Officer in Charge Signature Pad modal (captured on the spot, not
+     tied to any login account) -->
+<div class="modal-overlay" id="modal-oic-signature-pad" onclick="if(event.target===this)closeModal('modal-oic-signature-pad')">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Officer in Charge — Signature</div>
+      <button class="modal-close" onclick="closeModal('modal-oic-signature-pad')">&#10005;</button></div>
+    <div style="border:1.5px solid var(--border);border-radius:8px;overflow:hidden;background:#fff">
+      <canvas id="oic-sig-canvas" style="width:100%;height:180px;touch-action:none;display:block"></canvas>
+    </div>
+    <div id="oic-sig-pad-status" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;min-height:14px">Loading…</div>
+    <div style="display:flex;gap:8px;margin-top:12px">
+      <button class="btn" style="width:auto;flex:1" onclick="clearOICSignaturePad()">Clear</button>
+      <button class="btn btn-primary" style="width:auto;flex:1" onclick="saveOICSignaturePad()">Save Signature</button>
+    </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="font-size:11px;color:var(--muted);font-weight:600">OR</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <label class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;background:var(--surface);color:var(--text);border:1.5px dashed var(--border);cursor:pointer">
+      📷 Upload a Photo/Scan Instead
+      <input type="file" accept="image/*" style="display:none" onchange="handleOICSignatureUpload(this)"/>
+    </label>
+  </div>
+</div>
+
 <!-- ══ ALL ASSIGNMENTS ═══════════════════════════════════════════════ -->
 <div class="screen hidden" id="screen-all-assignments">
   <div class="topbar">
@@ -1140,10 +1167,21 @@ html,body{height:100%;overflow:hidden}
         "I confirm that the findings have been discussed with me and I have provided responses where necessary."
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:12px">
-        <div class="field"><label>Name (Facility Representative)</label><input type="text" id="obs-rep-name" placeholder="Full name"/></div>
-        <div class="field"><label>Designation</label><input type="text" id="obs-rep-designation" placeholder="e.g. Medical Director"/></div>
+        <div class="field"><label>Name (Officer in Charge)</label><input type="text" id="obs-rep-name" placeholder="Full name"/></div>
+        <div class="field"><label>Designation</label><input type="text" id="obs-rep-designation" placeholder="e.g. Officer in Charge"/></div>
         <div class="field"><label>Date</label><input type="date" id="obs-rep-date"/></div>
         <div class="field"><label>Contact</label><input type="tel" id="obs-rep-contact" placeholder="Phone number"/></div>
+      </div>
+      <div class="field" style="margin-top:4px">
+        <label>Officer in Charge — Signature</label>
+        <div id="oic-sig-warning" style="display:none;background:rgba(230,112,32,.1);border:1px solid rgba(230,112,32,.3);border-radius:8px;padding:8px 10px;font-size:11px;color:var(--amber);margin-bottom:8px">
+          ⚠ Not signed yet — please have the Officer in Charge sign before you leave the facility.
+        </div>
+        <div id="oic-sig-preview-box" style="border:1.5px solid var(--border);border-radius:8px;padding:10px;min-height:60px;display:flex;align-items:center;justify-content:center;background:#fff">
+          <div id="oic-sig-preview-empty" style="color:var(--muted);font-size:12px">Not signed yet</div>
+          <img id="oic-sig-preview-img" style="display:none;max-height:50px;max-width:100%"/>
+        </div>
+        <button class="btn" style="width:100%;margin-top:8px" onclick="openOICSignaturePad()">✍️ Get Officer in Charge's Signature</button>
       </div>
     </div>
 
@@ -2063,6 +2101,7 @@ async function forceFullRefresh(){
           p_scores:      payload.scores,
           p_summary:     payload.summary,
           p_device_id:   payload.deviceId,
+          p_obs_sheet:   payload.obsSheet,
         });
         if(!sbErr){
           visit.syncedAt = Date.now();
@@ -2155,6 +2194,7 @@ async function runSync(showFeedback){
           p_scores:      payload.scores,
           p_summary:     payload.summary,
           p_device_id:   payload.deviceId,
+          p_obs_sheet:   payload.obsSheet,
         });
 
         if(!sbErr){
@@ -3585,6 +3625,7 @@ function showObsSheet(){
   document.getElementById('obs-rep-contact').value       = obs.repContact  || '';
   document.getElementById('obs-tl-date').value           = obs.tlDate      || s.date || '';
   document.getElementById('obs-tl-contact').value        = obs.tlContact   || '';
+  updateOICSignaturePreview();
 
   // Auto-populate findings from module responses
   buildObsFindingsList(obs);
@@ -3748,7 +3789,11 @@ async function buildObsPrintHtml(){
 
   // Facility Response rows
   var respText = obs.facilityResponse || '';
-  var repSig = obs.repName ? await getSignatureForName(obs.repName) : null;
+  // Prefer the signature actually captured on the spot from the Officer
+  // in Charge — they're facility staff, not an NHIA app user, so the
+  // by-name lookup (built for NHIA staff who saved their own signature
+  // in Settings) will essentially never find a match for them anyway.
+  var repSig = obs.repSignature || (obs.repName ? await getSignatureForName(obs.repName) : null);
   var tlSig  = s.leadMonitor ? await getSignatureForName(s.leadMonitor) : null;
   rows += '<tr><td colspan="4" style="border:1px solid #ccc;padding:8px 6px;font-weight:700">8. Facility Response:</td></tr>'
         + '<tr><td colspan="4" style="border:1px solid #ccc;padding:10px;min-height:80px;font-size:11px;white-space:pre-wrap;line-height:1.6">' + (respText||'&nbsp;\n&nbsp;\n&nbsp;\n&nbsp;') + '</td></tr>'
@@ -3824,6 +3869,18 @@ async function pullFromSheets(visitId){
       var hasLocalSetup = local.setup && Object.keys(local.setup).length;
       if(!hasLocalSetup){
         local.setup = remote.setup;
+        changed = true;
+      }
+    }
+
+    // Same idea for the Observation Sheet — including the Officer in
+    // Charge's on-the-spot signature, which is captured only on the
+    // device present at the visit and would otherwise never reach a
+    // teammate reviewing from elsewhere.
+    if(remote.obs_sheet && Object.keys(remote.obs_sheet).length){
+      var hasLocalObs = local.obsSheet && Object.keys(local.obsSheet).length;
+      if(!hasLocalObs){
+        local.obsSheet = remote.obs_sheet;
         changed = true;
       }
     }
@@ -5136,6 +5193,135 @@ async function persistSignature(dataUrl){
   closeModal('modal-signature-pad');
   updateSignaturePreview();
   showToast('Signature saved','success');
+}
+
+// ── Officer in Charge signature (captured on the spot per visit, not
+// tied to any login account — a facility officer never has an app
+// account, so this can't reuse the saved-per-user mechanism above) ──
+var oicSigCtx = null, oicSigDrawing = false, oicSigHasDrawn = false;
+
+function openOICSignaturePad(){
+  openModal('modal-oic-signature-pad');
+  setOICSigPadStatus('Loading…');
+  requestAnimationFrame(function(){
+    requestAnimationFrame(initOICSignatureCanvas);
+  });
+}
+
+function setOICSigPadStatus(msg){
+  var el = document.getElementById('oic-sig-pad-status');
+  if(el) el.textContent = msg;
+}
+
+function initOICSignatureCanvas(){
+  var canvas = document.getElementById('oic-sig-canvas');
+  if(!canvas){ setOICSigPadStatus('Error: canvas not found'); return; }
+  var rect = canvas.getBoundingClientRect();
+  if(rect.width < 10 || rect.height < 10){
+    setTimeout(initOICSignatureCanvas, 120);
+    return;
+  }
+
+  canvas.width  = Math.round(rect.width);
+  canvas.height = Math.round(rect.height);
+  oicSigCtx = canvas.getContext('2d');
+  oicSigCtx.lineWidth = 2.4;
+  oicSigCtx.lineCap = 'round';
+  oicSigCtx.lineJoin = 'round';
+  oicSigCtx.strokeStyle = '#1a2340';
+  oicSigHasDrawn = false;
+
+  function getPos(e){
+    var r = canvas.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  }
+  function start(e){
+    e.preventDefault();
+    try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+    oicSigDrawing = true;
+    var p = getPos(e);
+    oicSigCtx.beginPath();
+    oicSigCtx.moveTo(p.x, p.y);
+    setOICSigPadStatus('Drawing…');
+  }
+  function move(e){
+    if(!oicSigDrawing) return;
+    e.preventDefault();
+    var p = getPos(e);
+    oicSigCtx.lineTo(p.x, p.y);
+    oicSigCtx.stroke();
+    oicSigHasDrawn = true;
+  }
+  function end(e){
+    if(e) e.preventDefault();
+    oicSigDrawing = false;
+    if(oicSigHasDrawn) setOICSigPadStatus('Looks good — tap Save Signature');
+  }
+
+  canvas.onpointerdown = start;
+  canvas.onpointermove = move;
+  canvas.onpointerup   = end;
+  canvas.onpointercancel = end;
+  canvas.onpointerleave  = end;
+  canvas.style.touchAction = 'none';
+
+  setOICSigPadStatus('Ready — hand the device to the Officer in Charge to sign');
+}
+
+function clearOICSignaturePad(){
+  var canvas = document.getElementById('oic-sig-canvas');
+  if(!canvas || !oicSigCtx) return;
+  oicSigCtx.clearRect(0, 0, canvas.width, canvas.height);
+  oicSigHasDrawn = false;
+  setOICSigPadStatus('Cleared — draw above');
+}
+
+function saveOICSignaturePad(){
+  if(!oicSigHasDrawn){ showToast('Please draw the signature first','error'); return; }
+  var canvas = document.getElementById('oic-sig-canvas');
+  persistOICSignature(canvas.toDataURL('image/png'));
+}
+
+async function handleOICSignatureUpload(inputEl){
+  var file = inputEl.files && inputEl.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ showToast('Please choose an image file','error'); return; }
+  if(file.size > 3*1024*1024){ showToast('Image is too large — please use a file under 3MB','error'); return; }
+  var reader = new FileReader();
+  reader.onload = function(){
+    persistOICSignature(reader.result);
+    inputEl.value = '';
+  };
+  reader.onerror = function(){ showToast('Failed to read that image','error'); };
+  reader.readAsDataURL(file);
+}
+
+function persistOICSignature(dataUrl){
+  if(!currentVisit) return;
+  if(!currentVisit.obsSheet) currentVisit.obsSheet = {};
+  currentVisit.obsSheet.repSignature = dataUrl;
+  saveObsSheet();
+  closeModal('modal-oic-signature-pad');
+  updateOICSignaturePreview();
+  showToast('Officer in Charge signature saved','success');
+}
+
+function updateOICSignaturePreview(){
+  var img    = document.getElementById('oic-sig-preview-img');
+  var empty  = document.getElementById('oic-sig-preview-empty');
+  var warn   = document.getElementById('oic-sig-warning');
+  if(!img || !empty) return;
+  var sig = currentVisit && currentVisit.obsSheet && currentVisit.obsSheet.repSignature;
+  if(sig){
+    img.src = sig;
+    img.style.display = '';
+    empty.style.display = 'none';
+    if(warn) warn.style.display = 'none';
+  } else {
+    img.style.display = 'none';
+    empty.style.display = '';
+    if(warn) warn.style.display = '';
+  }
 }
 
 // Looks up a saved signature by display name — checks the current user
