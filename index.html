@@ -2288,10 +2288,14 @@ function buildSyncPayload(visit, onlyModuleIds){
   var scores  = {};
   var pType   = visit.setup && visit.setup.providerType ? visit.setup.providerType : '';
 
-  // Score all 6 modules (used for the full-visit summary rollup below)
+  // Score all modules (used for the full-visit summary rollup below)
   MODULES.forEach(function(m){
     var modData = allModules[m.id];
-    if(modData && modData.responses && Object.keys(modData.responses).length){
+    var hasData = modData && (
+      (modData.responses && Object.keys(modData.responses).length) ||
+      (m.id==='m7' && modData.patients && modData.patients.some(function(p){ return p && (p.serviceReceived || p.nhisStatus); }))
+    );
+    if(hasData){
       scores[m.id] = calcModuleScore(m, modData, pType);
     } else {
       scores[m.id] = 'N/A';
