@@ -1570,44 +1570,18 @@ const MODULES = [
   },
   // ══════════════════════════════════════════════════════════════════
   // MODULE 7 — PATIENT EXIT INTERVIEW
-  // One interview per visit, one patient. Officer selects OPD or IPD
-  // first — Section D (Admission, Ward & Discharge) only applies to,
-  // and is only scored for, IPD. DRAFT content — adapted from the
-  // interview questions previously embedded in Modules 3, 5, and 6;
-  // review and adjust wording/weights as needed.
+  // One interview per visit, one patient. Uses the same interview form
+  // that used to be duplicated across Modules 3, 5, and 6 — restored
+  // here verbatim (demographics, service received, fee-by-category
+  // breakdown, receipt check, quality of care & rights, monitor's
+  // notes), with an OPD/IPD selector added up front. IPD adds a set of
+  // admission/ward/discharge questions on top of the same core
+  // interview. Score is derived automatically from the interview
+  // answers — nothing to separately tap.
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m7', num:'07', title:'Patient Exit Interview', color:'#C0392B', maxScore:136,
-    hasSettingSelector:true,
-    sections:[
-      {title:'A. Patient Profile & Consent', items:[
-        {id:'7.2', text:'Verbal consent obtained from the patient before the interview began', weight:6},
-        {id:'7.3', text:'Interview conducted privately, away from facility staff and other patients', weight:6},
-        {id:'7.4', text:'Patient confirmed as an NHIS member — membership/authentication checked', weight:5},
-      ]},
-      {title:'B. Co-Payment & Fee Compliance', items:[
-        {id:'7.5', text:'No registration, OPD card, or folder fee charged to the patient', weight:9},
-        {id:'7.6', text:'No consultation fee charged to the patient', weight:9},
-        {id:'7.7', text:'No fee charged for NHIA-formulary medicines dispensed', weight:9},
-        {id:'7.8', text:'No fee charged for NHIS-covered laboratory tests or RDTs', weight:8},
-        {id:'7.9', text:'No fee charged for consumables (gloves, syringes, dressing materials, etc.)', weight:7},
-        {id:'7.10', text:'Receipt issued for any payment made, or patient confirmed no payment was required', weight:7},
-        {id:'7.11', text:'Patient was not asked to pay for services covered under FPHC, where applicable', weight:8},
-      ]},
-      {title:'C. Quality of Care & Experience', items:[
-        {id:'7.12', text:'Patient was treated with respect and dignity by staff', weight:7},
-        {id:'7.13', text:'Waiting time before being seen was reasonable', weight:5},
-        {id:'7.14', text:'Diagnosis and treatment plan were explained in a way the patient understood', weight:7},
-        {id:'7.15', text:'Patient would recommend this facility to others (overall satisfaction)', weight:5},
-      ]},
-      {title:'D. IPD — Admission, Ward & Discharge', settingOnly:'IPD', items:[
-        {id:'7.16', text:'Admission process explained; NHIS coverage confirmed before admission with no upfront deposit demanded', weight:9, settingOnly:'IPD'},
-        {id:'7.17', text:'Ward/bed conditions were clean and adequate, with reasonable privacy maintained', weight:6, settingOnly:'IPD'},
-        {id:'7.18', text:'Length of hospital stay was clinically appropriate, not unnecessarily prolonged', weight:5, settingOnly:'IPD'},
-        {id:'7.19', text:'Discharge was NOT withheld or delayed pending payment', weight:10, settingOnly:'IPD'},
-        {id:'7.20', text:'No unauthorized ward, bed, or admission fees charged beyond NHIS coverage', weight:8, settingOnly:'IPD'},
-      ]},
-    ]
+    id:'m7', num:'07', title:'Patient Exit Interview', color:'#C0392B', maxScore:83,
+    hasPatientInterview:true, interviewLabel:'Patient Exit Interview', hasSettingSelector:true,
   },
 ];
 
@@ -2588,6 +2562,10 @@ function renderModuleList(){
 }
 
 function allIndicatorsFilled(module, data){
+  if(module.id==='m7'){
+    var p = (data && data.patients && data.patients[0]) || {};
+    return !!(p.serviceReceived && p.nhisStatus);
+  }
   if(!data||!data.responses) return false;
   const pType = currentVisit&&currentVisit.setup?currentVisit.setup.providerType||'':'';
   const setting = (data && data.setting) || '';
@@ -2615,7 +2593,39 @@ function renderRing(){
   document.getElementById('ring-pct').textContent=pct+'%';
 }
 
+// Module 7's score is derived automatically from the single patient
+// interview's answers — there's nothing separately tapped by the
+// officer. IPD adds five extra criteria on top of the shared ones.
+function calcPEIScore(data){
+  var p = (data && data.patients && data.patients[0]) || {};
+  var setting = data && data.setting;
+  var hasAnyAnswer = p.serviceReceived || p.nhisStatus || p.gender;
+  if(!hasAnyAnswer) return {score:0,max:0,pct:0};
+
+  var totalFees = parseFloat(p.registrationFee||0)+parseFloat(p.consultFee||0)+parseFloat(p.medicineFee||0)+parseFloat(p.labFee||0)+parseFloat(p.otherFee||0);
+
+  var items = [
+    { ok: totalFees===0, weight:12 },
+    { ok: p.receiptGiven==='Yes' || totalFees===0, weight:8 },
+    { ok: p.complainAware==='Yes', weight:6 },
+    { ok: p.privacyMaintained==='Yes', weight:7 },
+    { ok: p.consentObtained==='Yes'||p.consentObtained==='N/A', weight:6 },
+    { ok: parseInt(p.qualityRating||0) >= 4, weight:6 },
+  ];
+  if(setting==='IPD'){
+    items.push({ ok: p.admissionExplained==='Yes', weight:9 });
+    items.push({ ok: p.wardConditions==='Yes', weight:6 });
+    items.push({ ok: p.lengthOfStayOk==='Yes', weight:5 });
+    items.push({ ok: p.dischargeWithheld==='No', weight:10 });
+    items.push({ ok: p.wardFeesCharged==='No', weight:8 });
+  }
+  var score=0,max=0;
+  items.forEach(function(it){ max+=it.weight; if(it.ok) score+=it.weight; });
+  return {score:Math.round(score), max:max, pct: max?Math.round(score/max*100):0};
+}
+
 function calcModuleScore(module, data, providerType){
+  if(module.id==='m7') return calcPEIScore(data);
   const pType = currentVisit&&currentVisit.setup?currentVisit.setup.providerType||'':'';
   const setting = (data && data.setting) || '';
   const inds=module.indicators||(module.sections?module.sections.flatMap(s=>s.items):[]);
@@ -2888,17 +2898,33 @@ function renderModuleContent(m){
 
   // ── Patient Exit Interviews (M3, M5, M6) ──────────────────────────
   if(m.hasPatientInterview){
-    const COUNT = m.id==='m3' ? 5 : 10;
-    const patients=data.patients||Array(COUNT).fill(null).map(()=>({gender:'',ageGroup:'',nhisStatus:'',serviceReceived:'',registrationFee:'',consultFee:'',medicineFee:'',labFee:'',otherFee:'',otherFeeDesc:'',totalPaid:'',receiptGiven:'',complainAware:'',consentObtained:'',privacyMaintained:'',qualityRating:'',notes:'',paid:''}));
-    const minReq = m.id==='m3' ? 5 : 10;
+    const COUNT = m.id==='m3' ? 5 : m.id==='m7' ? 1 : 10;
+    const patients=data.patients||Array(COUNT).fill(null).map(()=>({gender:'',ageGroup:'',nhisStatus:'',serviceReceived:'',registrationFee:'',consultFee:'',medicineFee:'',labFee:'',otherFee:'',otherFeeDesc:'',totalPaid:'',receiptGiven:'',complainAware:'',consentObtained:'',privacyMaintained:'',qualityRating:'',notes:'',paid:'',admissionExplained:'',wardConditions:'',lengthOfStayOk:'',dischargeWithheld:'',wardFeesCharged:''}));
+    const minReq = m.id==='m3' ? 5 : m.id==='m7' ? 1 : 10;
 
     // Which question sets to show per module
-    const showFees   = m.id==='m4'||m.id==='m5';
-    const showQoC    = m.id==='m3'||m.id==='m4';
+    const showFees   = m.id==='m4'||m.id==='m5'||m.id==='m7';
+    const showQoC    = m.id==='m3'||m.id==='m4'||m.id==='m7';
     const showFPHC   = m.id==='m5';
     const feeContext = m.id==='m5' ? 'FPHC' : 'NHIS';
 
-    html+=`<div class="section-divider" style="margin-top:24px"><h3>${m.interviewLabel} (minimum ${minReq} patients)</h3></div>`;
+    // Module 7 only — OPD/IPD selector, shown before the interview
+    // itself. Section D (Admission, Ward & Discharge) below only
+    // appears, and only counts toward the score, once IPD is chosen.
+    if(m.hasSettingSelector){
+      var curSetting = data.setting || '';
+      html += '<div class="card" style="margin-bottom:14px">'
+        + '<div class="field"><label>Patient Service Setting *</label>'
+        + '<select onchange="setModuleSetting(\'' + m.id + '\',this.value)">'
+        + '<option value="" ' + (!curSetting?'selected':'') + '>Select OPD or IPD…</option>'
+        + '<option value="OPD" ' + (curSetting==='OPD'?'selected':'') + '>OPD — Outpatient</option>'
+        + '<option value="IPD" ' + (curSetting==='IPD'?'selected':'') + '>IPD — Inpatient (Admitted)</option>'
+        + '</select></div>'
+        + (!curSetting ? '<div style="font-size:11px;color:var(--amber);margin-top:6px">⚠ Select a setting first — Admission/Ward/Discharge questions only apply to IPD.</div>' : '')
+        + '</div>';
+    }
+
+    html+=`<div class="section-divider" style="margin-top:24px"><h3>${m.interviewLabel} (minimum ${minReq} patient${minReq>1?'s':''})</h3></div>`;
 
     // ── Live summary bar ──────────────────────────────────────────
     html+=`<div class="pei-summary-bar" id="pei-summary-${m.id}">
@@ -3091,6 +3117,42 @@ function renderModuleContent(m){
                 <option value="3" ${p.qualityRating==='3'?'selected':''}>⭐⭐⭐ Fair</option>
                 <option value="2" ${p.qualityRating==='2'?'selected':''}>⭐⭐ Poor</option>
                 <option value="1" ${p.qualityRating==='1'?'selected':''}>⭐ Very Poor</option>
+              </select></div>
+          </div>`:''}
+
+          ${(m.id==='m7' && data.setting==='IPD')?`
+          <!-- D2: IPD — Admission, Ward & Discharge -->
+          <div class="pei-section">D2 — Admission, Ward &amp; Discharge (IPD)</div>
+          <div class="pei-grid-2">
+            <div class="field"><label>Admission explained &amp; NHIS confirmed before admission, no upfront deposit demanded?</label>
+              <select onchange="setPEI('${m.id}',${i},'admissionExplained',this.value)">
+                <option value="" ${!p.admissionExplained?'selected':''}>—</option>
+                <option value="Yes" ${p.admissionExplained==='Yes'?'selected':''}>Yes</option>
+                <option value="No" ${p.admissionExplained==='No'?'selected':''}>No</option>
+              </select></div>
+            <div class="field"><label>Ward/bed conditions clean and adequate, reasonable privacy?</label>
+              <select onchange="setPEI('${m.id}',${i},'wardConditions',this.value)">
+                <option value="" ${!p.wardConditions?'selected':''}>—</option>
+                <option value="Yes" ${p.wardConditions==='Yes'?'selected':''}>Yes</option>
+                <option value="No" ${p.wardConditions==='No'?'selected':''}>No</option>
+              </select></div>
+            <div class="field"><label>Length of stay clinically appropriate, not unnecessarily prolonged?</label>
+              <select onchange="setPEI('${m.id}',${i},'lengthOfStayOk',this.value)">
+                <option value="" ${!p.lengthOfStayOk?'selected':''}>—</option>
+                <option value="Yes" ${p.lengthOfStayOk==='Yes'?'selected':''}>Yes</option>
+                <option value="No" ${p.lengthOfStayOk==='No'?'selected':''}>No</option>
+              </select></div>
+            <div class="field"><label>Was discharge withheld or delayed pending payment?</label>
+              <select onchange="setPEI('${m.id}',${i},'dischargeWithheld',this.value)">
+                <option value="" ${!p.dischargeWithheld?'selected':''}>—</option>
+                <option value="No" ${p.dischargeWithheld==='No'?'selected':''}>No — discharged normally</option>
+                <option value="Yes" ${p.dischargeWithheld==='Yes'?'selected':''}>Yes — held for payment</option>
+              </select></div>
+            <div class="field"><label>Any unauthorized ward/bed/admission fees charged beyond NHIS coverage?</label>
+              <select onchange="setPEI('${m.id}',${i},'wardFeesCharged',this.value)">
+                <option value="" ${!p.wardFeesCharged?'selected':''}>—</option>
+                <option value="No" ${p.wardFeesCharged==='No'?'selected':''}>No</option>
+                <option value="Yes" ${p.wardFeesCharged==='Yes'?'selected':''}>Yes</option>
               </select></div>
           </div>`:''}
 
@@ -5971,8 +6033,7 @@ function refreshPEISummary(moduleId){
     if(paid>0){
       escEl.classList.add('visible');
       escTxt.textContent=`${paid} patient(s) reported paying a total of GHS ${total.toFixed(2)}. ` +
-        (moduleId==='m5'?'FPHC violation — notify the NHIA Co-payment Directorate within 24 hours.':
-         'Illegal top-up charges — issue written warning and notify the NHIA Co-payment Directorate within 24 hours.');
+        'Illegal charges reported during exit interview — issue written warning and notify the NHIA Co-payment Directorate within 24 hours.';
     } else {
       escEl.classList.remove('visible');
     }
