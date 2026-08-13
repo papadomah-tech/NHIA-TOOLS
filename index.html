@@ -1468,7 +1468,7 @@ const MODULES = [
     id:'m3', num:'03', title:'Clinical & Service Delivery', color:'#2E86C1', maxScore:104,
     sections:[
       {title:'A. Clinical Practice & Rational Drug Use', items:[
-        {id:'3.1', text:'Average prescriptions per attendance calculated and compared with NHIS guidelines — polypharmacy cases flagged and investigated (enter figures to calculate)', weight:9, hasPrescriptionCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
+        {id:'3.1', text:'Prescription rate assessed by sampling patient encounters (OPD register/folders) and counting medicines prescribed per encounter — compared against NHIS guidelines; polypharmacy cases flagged and investigated', weight:9, hasPrescriptionCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
         {id:'3.2', text:'Top 10 OPD morbidity cases for last 3 months obtained and compared with claims — disease pattern consistent with claims profile', weight:9, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
         {id:'3.3', text:'OPD register cross-referenced with claims — total OPD figures, insured (NHIS) and non-insured patients extracted; insured-to-total ratio calculated and trended over 3 months', weight:8, hasAttendanceCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
         {id:'3.3b', text:'Zoom (Detention for Observation) tariff — number of Zoom submissions calculated as a ratio of total OPD claims submissions; ratio benchmarked to detect possible Zoom tariff abuse', weight:8, hasZoomCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic']},
@@ -2798,21 +2798,38 @@ function renderModuleContent(m){
             + '</div>'
             + '</div>';
     }
-    // 3.1 — Prescription Rate Calculator
+    // 3.1 — Prescription Rate Calculator (sample-based encounter review,
+    // per WHO/INRUD Core Drug Use Indicators methodology — built for
+    // facilities that don't maintain aggregate prescribing totals).
+    // The officer samples patient encounters directly from the OPD
+    // register/folders already being reviewed and counts medicines
+    // prescribed per encounter; the app averages the sample.
     if(ind.hasPrescriptionCalc){
       var px = (data.prescCalc || {});
+      var SAMPLE_N = 10;
       var pxRows = '';
-      ['Month 1','Month 2','Month 3'].forEach(function(lbl, mi){
-        var key = 'pm'+(mi+1);
-        var scripts = px[key+'_scripts'] || '';
-        var attend  = px[key+'_attend']  || '';
-        var ratio   = (scripts && attend && parseInt(attend)>0)
-                      ? (parseInt(scripts)/parseInt(attend)).toFixed(1)
-                      : null;
-        var rCol = ratio !== null ? (parseFloat(ratio)>2.5?'#e05050':parseFloat(ratio)>2.0?'var(--gold)':'#22c99a') : '#888';
-        pxRows += '<div style="display:grid;grid-template-columns:80px 1fr 1fr 64px;gap:8px;align-items:center;padding:8px 0;border-bottom:1px solid var(--border)">'               + '<div style="font-size:11px;color:var(--muted);font-weight:600">'+lbl+'</div>'               + '<div class="field" style="margin:0"><label style="font-size:10px">Total Prescriptions Issued</label>'               + '<input class="px-calc-input" data-pxkey="'+key+'_scripts" type="number" min="0" placeholder="e.g. 980" value="'+scripts+'"'               + ' style="padding:6px 8px;font-size:13px"/></div>'               + '<div class="field" style="margin:0"><label style="font-size:10px">Total OPD Attendances</label>'               + '<input class="px-calc-input" data-pxkey="'+key+'_attend" type="number" min="0" placeholder="e.g. 450" value="'+attend+'"'               + ' style="padding:6px 8px;font-size:13px"/></div>'               + '<div style="text-align:center;padding-top:14px">'               + '<div id="px-ratio-'+key+'" style="font-size:20px;font-weight:700;color:'+rCol+'">'+(ratio!==null?ratio:'—')+'</div>'               + '<div style="font-size:9px;color:var(--muted)">Rx/Visit</div></div>'               + '</div>';
-      });
-      base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'            + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">💊 Prescription Rate (3-Month)</div>'            + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px">NHIS guideline: ≤2.0 prescriptions per visit. &gt;2.5 = High (polypharmacy risk)</div>'            + pxRows            + '<div id="px-summary" style="margin-top:10px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">Enter figures above to calculate.</div>'            + '</div>';
+      for(var si=1; si<=SAMPLE_N; si++){
+        var refKey = 's'+si+'_ref';
+        var cntKey = 's'+si+'_count';
+        var ref = px[refKey] || '';
+        var cnt = px[cntKey] || '';
+        pxRows += '<div style="display:grid;grid-template-columns:36px 1fr 90px;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--border)">'
+          + '<div style="font-size:11px;color:var(--muted);font-weight:700">#'+si+'</div>'
+          + '<input class="px-calc-input" data-pxkey="'+refKey+'" type="text" placeholder="Folder / register ref (optional)" value="'+ref+'"'
+          + ' style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;background:#fafbff"/>'
+          + '<input class="px-calc-input" data-pxkey="'+cntKey+'" type="number" min="0" placeholder="# medicines" value="'+cnt+'"'
+          + ' style="padding:6px 8px;font-size:13px;font-weight:700;text-align:center;border:1.5px solid var(--border);border-radius:6px"/>'
+          + '</div>';
+      }
+      base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
+        + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">💊 Prescription Rate — Sampled Encounters</div>'
+        + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">WHO/INRUD method — sample at least 10 patient encounters from the OPD register or folders being reviewed today. Enter the number of medicines prescribed for each. NHIS guideline: ≤2.0 per encounter. &gt;2.5 = High (polypharmacy risk).</div>'
+        + '<div style="display:grid;grid-template-columns:36px 1fr 90px;gap:8px;padding-bottom:6px;border-bottom:2px solid var(--border);margin-bottom:2px">'
+        + '<div></div><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase">Reference</div><div style="font-size:10px;font-weight:700;color:var(--muted);text-transform:uppercase;text-align:center"># Medicines</div>'
+        + '</div>'
+        + pxRows
+        + '<div id="px-summary" style="margin-top:10px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">Enter medicine counts above to calculate.</div>'
+        + '</div>';
     }
 
     // 3.3b — Zoom Tariff Ratio Calculator
@@ -3618,29 +3635,23 @@ function setPrescCalc(field, val){
   dbPut('visits', currentVisit);
 
   var px = currentVisit.modules[mid].prescCalc;
-  var grandScripts=0, grandAttend=0, validMonths=0;
-  ['pm1','pm2','pm3'].forEach(function(k){
-    var scripts = parseInt(px[k+'_scripts']||'');
-    var attend  = parseInt(px[k+'_attend'] ||'');
-    var el = document.getElementById('px-ratio-'+k);
-    if(isNaN(scripts)||isNaN(attend)||attend<=0){
-      if(el){el.textContent='—';el.style.color='#888';} return;
-    }
-    var ratio = (scripts/attend).toFixed(1);
-    var col = parseFloat(ratio)>2.5?'#e05050':parseFloat(ratio)>2.0?'var(--gold)':'#22c99a';
-    if(el){el.textContent=ratio;el.style.color=col;}
-    grandScripts+=scripts; grandAttend+=attend; validMonths++;
-  });
+  var sum=0, sampled=0;
+  for(var si=1; si<=10; si++){
+    var cnt = parseInt(px['s'+si+'_count']||'');
+    if(!isNaN(cnt) && cnt>=0){ sum+=cnt; sampled++; }
+  }
   var sumEl=document.getElementById('px-summary');
   if(!sumEl) return;
-  if(validMonths===0){sumEl.textContent='Enter figures above to calculate.';sumEl.style.color='var(--muted)';return;}
-  var avgRatio=(grandScripts/grandAttend).toFixed(2);
+  if(sampled===0){sumEl.textContent='Enter medicine counts above to calculate.';sumEl.style.color='var(--muted)';return;}
+  var avgRatio=(sum/sampled).toFixed(2);
   var col=parseFloat(avgRatio)>2.5?'#e05050':parseFloat(avgRatio)>2.0?'var(--gold)':'#22c99a';
-  sumEl.innerHTML='<strong>'+validMonths+'-Month Average:</strong>'
-    +' <strong style="color:'+col+'">'+avgRatio+' Rx per visit</strong>'
-    +(parseFloat(avgRatio)>2.5?' &nbsp;<span style="color:#e05050">⚠ Above 2.5 — polypharmacy risk; sample prescriptions in folder review</span>'
+  var sampleNote = sampled<10 ? ' &nbsp;<span style="color:var(--gold)">(sample below the recommended minimum of 10 — add more encounters if possible)</span>' : '';
+  sumEl.innerHTML='<strong>'+sampled+' encounter(s) sampled — Average:</strong>'
+    +' <strong style="color:'+col+'">'+avgRatio+' medicines per encounter</strong>'
+    +(parseFloat(avgRatio)>2.5?' &nbsp;<span style="color:#e05050">⚠ Above 2.5 — polypharmacy risk; investigate prescribing patterns further</span>'
     :parseFloat(avgRatio)>2.0?' &nbsp;<span style="color:var(--gold)">⚠ Slightly elevated — monitor trend</span>'
-    :' &nbsp;<span style="color:#22c99a">✓ Within NHIS guideline (≤2.0)</span>');
+    :' &nbsp;<span style="color:#22c99a">✓ Within NHIS guideline (≤2.0)</span>')
+    +sampleNote;
   sumEl.style.color='var(--text)';
 }
 
