@@ -1804,15 +1804,24 @@ function subscribeRealtime(){
         if(remote.modules && Object.keys(remote.modules).length){
           Object.keys(remote.modules).forEach(function(mid){
             var remMod = remote.modules[mid];
-            if(!remMod || !remMod.responses) return;
+            if(!remMod) return;
             if(!local.modules) local.modules = {};
             var locMod = local.modules[mid] || { responses:{}, remarks:{} };
-            Object.keys(remMod.responses).forEach(function(iid){
+            Object.keys(remMod.responses||{}).forEach(function(iid){
               if(remMod.responses[iid]) locMod.responses[iid] = remMod.responses[iid];
             });
             Object.keys(remMod.remarks||{}).forEach(function(iid){
               if(remMod.remarks[iid] && !(locMod.remarks && locMod.remarks[iid]))
                 locMod.remarks[iid] = remMod.remarks[iid];
+            });
+            // Same rich captured-data arrays handled in pullFromSheets —
+            // needed here too so live updates carry claims/folder/patient
+            // interview data, not just simple Yes/No responses.
+            ['claims','folders','patients'].forEach(function(key){
+              if(remMod[key]){
+                var result = mergeDataArray(locMod[key], remMod[key]);
+                locMod[key] = result.arr;
+              }
             });
             local.modules[mid] = locMod;
           });
@@ -3852,6 +3861,33 @@ function pad(str, len){
 // This is what syncs progress across devices.
 // ══════════════════════════════════════════════════════════════════════
 
+// Merges two arrays of captured-data rows (Module 2's claims/folders,
+// Modules 3/5/6's patient interviews) index by index, preferring
+// whichever side actually has data filled in for that row. Needed
+// because these arrays are pre-sized with empty placeholder rows
+// (e.g. Array(10).fill({...})), so comparing array length alone
+// (as the District Office merge does for its roster data) can't tell
+// a filled-in row from an empty one here.
+function mergeDataArray(localArr, remoteArr){
+  if(!remoteArr || !remoteArr.length) return { arr: localArr, changed: false };
+  if(!localArr || !localArr.length) return { arr: remoteArr.slice(), changed: true };
+  var merged = localArr.slice();
+  var changed = false;
+  function rowHasData(row){
+    if(!row) return false;
+    return Object.keys(row).some(function(k){ var v = row[k]; return v !== null && v !== undefined && v !== ''; });
+  }
+  for(var i=0; i<remoteArr.length; i++){
+    var remRow = remoteArr[i];
+    var locRow = merged[i];
+    if(rowHasData(remRow) && !rowHasData(locRow)){
+      merged[i] = remRow;
+      changed = true;
+    }
+  }
+  return { arr: merged, changed: changed };
+}
+
 async function pullFromSheets(visitId){
   if(!navigator.onLine || !currentUser || !visitId) return;
   try {
@@ -3890,25 +3926,39 @@ async function pullFromSheets(visitId){
     if(remote.modules && Object.keys(remote.modules).length){
     Object.keys(remote.modules).forEach(function(mid){
       var remMod = remote.modules[mid];
-      if(!remMod || !remMod.responses) return;
+      if(!remMod) return;
       var locMod = local.modules[mid] || { responses:{}, remarks:{} };
+      var midChanged = false;
+      if(remMod.responses){
       Object.keys(remMod.responses).forEach(function(indId){
         var remVal = remMod.responses[indId];
         if(remVal && remVal !== (locMod.responses && locMod.responses[indId])){
           if(!locMod.responses) locMod.responses = {};
           locMod.responses[indId] = remVal;
-          changed = true;
+          midChanged = true;
         }
       });
+      }
       Object.keys(remMod.remarks||{}).forEach(function(indId){
         var remRmk = remMod.remarks[indId];
         if(remRmk && !(locMod.remarks && locMod.remarks[indId])){
           if(!locMod.remarks) locMod.remarks = {};
           locMod.remarks[indId] = remRmk;
-          changed = true;
+          midChanged = true;
         }
       });
-      if(changed) local.modules[mid] = locMod;
+      // Rich captured data (Module 2's claims/folder verification,
+      // Patient Exit Interviews on Modules 3/5/6) lives in these arrays,
+      // entirely separate from the responses/remarks above — without
+      // this, a teammate's actual captured records never appeared on
+      // another device even though simple Yes/No responses did.
+      ['claims','folders','patients'].forEach(function(key){
+        if(remMod[key]){
+          var result = mergeDataArray(locMod[key], remMod[key]);
+          if(result.changed){ locMod[key] = result.arr; midChanged = true; }
+        }
+      });
+      if(midChanged){ local.modules[mid] = locMod; changed = true; }
     });
     }
 
