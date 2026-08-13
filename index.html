@@ -1466,7 +1466,6 @@ const MODULES = [
   // ══════════════════════════════════════════════════════════════════
   {
     id:'m3', num:'03', title:'Clinical & Service Delivery', color:'#2E86C1', maxScore:110,
-    hasPatientInterview:true, interviewLabel:'Patient Experience Interviews',
     sections:[
       {title:'A. Clinical Practice & Rational Drug Use', items:[
         {id:'3.1', text:'Average prescriptions per attendance calculated and compared with NHIS guidelines — polypharmacy cases flagged and investigated (enter figures to calculate)', weight:9, hasPrescriptionCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
@@ -1524,7 +1523,6 @@ const MODULES = [
   // ══════════════════════════════════════════════════════════════════
   {
     id:'m5', num:'05', title:'Financial Accountability & Co-Payment Detection', color:'#E09052', maxScore:81,
-    hasPatientInterview:true, interviewLabel:'Patient Exit Interviews (Co-Payment Detection)',
     indicators:[
       {id:'5.1', text:'OPD / Consultation — NHIS patients not charged for OPD card, first-time consultation, or folder fees; charges verified through receipt check and patient interviews', weight:10, section:'A. Co-Payment Detection by Service Type'},
       {id:'5.2', text:'Laboratory & RDTs — NHIS-covered laboratory tests (FBC, LFT, H. pylori, RBS) and RDT kits not charged to insured patients; receipts cross-checked', weight:10, section:'A. Co-Payment Detection by Service Type', levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital','Diagnostic/Lab Centre']},
@@ -1545,7 +1543,6 @@ const MODULES = [
   {
     id:'m6', num:'06', title:'Free Primary Health Care (FPHC) Compliance', color:'#8E44AD', maxScore:90,
     chpsOnly:true,
-    hasPatientInterview:true, interviewLabel:'Patient Exit Interviews (FPHC)',
     sections:[
       {title:'A. Service Access & Zero-Fee Compliance', items:[
         {id:'6.1', text:'No fees of any kind charged for primary care services (OPD, consultations, basic procedures) — applies to ALL patients regardless of NHIS status', weight:12},
@@ -1568,6 +1565,47 @@ const MODULES = [
         {id:'6.14', text:'Basic diagnostic equipment for primary care is functional', weight:6},
         {id:'6.15', text:'FPHC policy notice/poster displayed prominently; community members aware of free services', weight:5},
         {id:'6.16', text:'No reports of facility requesting unofficial contributions from community for FPHC services', weight:8},
+      ]},
+    ]
+  },
+  // ══════════════════════════════════════════════════════════════════
+  // MODULE 7 — PATIENT EXIT INTERVIEW
+  // One interview per visit, one patient. Officer selects OPD or IPD
+  // first — Section D (Admission, Ward & Discharge) only applies to,
+  // and is only scored for, IPD. DRAFT content — adapted from the
+  // interview questions previously embedded in Modules 3, 5, and 6;
+  // review and adjust wording/weights as needed.
+  // ══════════════════════════════════════════════════════════════════
+  {
+    id:'m7', num:'07', title:'Patient Exit Interview', color:'#C0392B', maxScore:136,
+    hasSettingSelector:true,
+    sections:[
+      {title:'A. Patient Profile & Consent', items:[
+        {id:'7.2', text:'Verbal consent obtained from the patient before the interview began', weight:6},
+        {id:'7.3', text:'Interview conducted privately, away from facility staff and other patients', weight:6},
+        {id:'7.4', text:'Patient confirmed as an NHIS member — membership/authentication checked', weight:5},
+      ]},
+      {title:'B. Co-Payment & Fee Compliance', items:[
+        {id:'7.5', text:'No registration, OPD card, or folder fee charged to the patient', weight:9},
+        {id:'7.6', text:'No consultation fee charged to the patient', weight:9},
+        {id:'7.7', text:'No fee charged for NHIA-formulary medicines dispensed', weight:9},
+        {id:'7.8', text:'No fee charged for NHIS-covered laboratory tests or RDTs', weight:8},
+        {id:'7.9', text:'No fee charged for consumables (gloves, syringes, dressing materials, etc.)', weight:7},
+        {id:'7.10', text:'Receipt issued for any payment made, or patient confirmed no payment was required', weight:7},
+        {id:'7.11', text:'Patient was not asked to pay for services covered under FPHC, where applicable', weight:8},
+      ]},
+      {title:'C. Quality of Care & Experience', items:[
+        {id:'7.12', text:'Patient was treated with respect and dignity by staff', weight:7},
+        {id:'7.13', text:'Waiting time before being seen was reasonable', weight:5},
+        {id:'7.14', text:'Diagnosis and treatment plan were explained in a way the patient understood', weight:7},
+        {id:'7.15', text:'Patient would recommend this facility to others (overall satisfaction)', weight:5},
+      ]},
+      {title:'D. IPD — Admission, Ward & Discharge', settingOnly:'IPD', items:[
+        {id:'7.16', text:'Admission process explained; NHIS coverage confirmed before admission with no upfront deposit demanded', weight:9, settingOnly:'IPD'},
+        {id:'7.17', text:'Ward/bed conditions were clean and adequate, with reasonable privacy maintained', weight:6, settingOnly:'IPD'},
+        {id:'7.18', text:'Length of hospital stay was clinically appropriate, not unnecessarily prolonged', weight:5, settingOnly:'IPD'},
+        {id:'7.19', text:'Discharge was NOT withheld or delayed pending payment', weight:10, settingOnly:'IPD'},
+        {id:'7.20', text:'No unauthorized ward, bed, or admission fees charged beyond NHIS coverage', weight:8, settingOnly:'IPD'},
       ]},
     ]
   },
@@ -1823,6 +1861,7 @@ function subscribeRealtime(){
                 locMod[key] = result.arr;
               }
             });
+            if(remMod.setting && !locMod.setting) locMod.setting = remMod.setting;
             local.modules[mid] = locMod;
           });
           dbPut('visits', local).then(function(){
@@ -2551,8 +2590,13 @@ function renderModuleList(){
 function allIndicatorsFilled(module, data){
   if(!data||!data.responses) return false;
   const pType = currentVisit&&currentVisit.setup?currentVisit.setup.providerType||'':'';
+  const setting = (data && data.setting) || '';
   const inds=module.indicators||(module.sections?module.sections.flatMap(s=>s.items):[]);
-  const applicable = inds.filter(function(i){ return !(i.levels&&i.levels.length&&pType&&i.levels.indexOf(pType)===-1); });
+  const applicable = inds.filter(function(i){
+    if(i.levels&&i.levels.length&&pType&&i.levels.indexOf(pType)===-1) return false;
+    if(i.settingOnly && setting && i.settingOnly !== setting) return false;
+    return true;
+  });
   return applicable.every(i=>data.responses[i.id]);
 }
 
@@ -2573,11 +2617,14 @@ function renderRing(){
 
 function calcModuleScore(module, data, providerType){
   const pType = currentVisit&&currentVisit.setup?currentVisit.setup.providerType||'':'';
+  const setting = (data && data.setting) || '';
   const inds=module.indicators||(module.sections?module.sections.flatMap(s=>s.items):[]);
   let score=0,max=0;
   inds.forEach(ind=>{
     // Exclude indicators not applicable to this facility type
     if(ind.levels&&ind.levels.length&&pType&&ind.levels.indexOf(pType)===-1) return;
+    // Module 7 only: exclude IPD-only indicators when OPD was selected
+    if(ind.settingOnly && setting && ind.settingOnly !== setting) return;
     const r=(data&&data.responses&&data.responses[ind.id])||null;
     if(r==='N/A') return;
     max+=ind.weight;
@@ -2626,6 +2673,22 @@ function renderModuleContent(m){
     html+=`<div class="completion-banner"><div class="completion-icon">ℹ️</div><div class="completion-text"><h3>CHPS / Health Centres Only</h3><p>Mark all indicators N/A if this facility is not a CHPS Compound or Health Centre.</p></div></div>`;
   }
 
+  // Module 7 only — OPD/IPD setting selector. Determines which
+  // section D (Admission, Ward & Discharge) indicators apply; those
+  // are excluded from scoring entirely when OPD is selected.
+  if(m.hasSettingSelector){
+    var curSetting = data.setting || '';
+    html += '<div class="card" style="margin-bottom:14px">'
+      + '<div class="field"><label>Patient Service Setting *</label>'
+      + '<select onchange="setModuleSetting(\'' + m.id + '\',this.value)">'
+      + '<option value="" ' + (!curSetting?'selected':'') + '>Select OPD or IPD…</option>'
+      + '<option value="OPD" ' + (curSetting==='OPD'?'selected':'') + '>OPD — Outpatient</option>'
+      + '<option value="IPD" ' + (curSetting==='IPD'?'selected':'') + '>IPD — Inpatient (Admitted)</option>'
+      + '</select></div>'
+      + (!curSetting ? '<div style="font-size:11px;color:var(--amber);margin-top:6px">⚠ Select a setting first — Section D only applies to IPD.</div>' : '')
+      + '</div>';
+  }
+
   // Render indicators
   const renderIndicator=(ind)=>{
     const resp=R[ind.id]||'';
@@ -2657,6 +2720,19 @@ function renderModuleContent(m){
         + '<div class="ind-text" style="flex:1;font-size:12px;color:var(--muted)">' + ind.text + '</div>'
         + '<div style="font-size:10px;background:var(--border);color:var(--muted);border-radius:10px;padding:2px 8px;flex-shrink:0;font-weight:600">N/A — Not applicable to this facility type</div>'
         + '</div></div>';
+    }
+    // Module 7 only — IPD-only indicators are hidden/excluded until IPD
+    // is selected as the service setting.
+    if(ind.settingOnly){
+      var curSetting = data.setting || '';
+      if(curSetting !== ind.settingOnly){
+        return '<div class="indicator na-indicator" style="opacity:.45;pointer-events:none">'
+          + '<div class="indicator-header" style="cursor:default">'
+          + '<div class="ind-id">' + ind.id + '</div>'
+          + '<div class="ind-text" style="flex:1;font-size:12px;color:var(--muted)">' + ind.text + '</div>'
+          + '<div style="font-size:10px;background:var(--border);color:var(--muted);border-radius:10px;padding:2px 8px;flex-shrink:0;font-weight:600">' + (curSetting?'N/A — OPD selected':'Select IPD above to enable') + '</div>'
+          + '</div></div>';
+      }
     }
     var base = renderIndicator(ind);
     // 3.3 — OPD Attendance & Insured Ratio Calculator
@@ -3571,6 +3647,18 @@ function setRemark(indId,val){
   dbPut('visits',currentVisit);
 }
 
+// Module 7 only — records the OPD/IPD choice and re-renders so
+// Section D (Admission, Ward & Discharge) shows/hides and scoring
+// updates immediately.
+function setModuleSetting(moduleId, val){
+  if(!currentVisit.modules[moduleId]) currentVisit.modules[moduleId]={responses:{},remarks:{}};
+  currentVisit.modules[moduleId].setting = val;
+  dbPut('visits',currentVisit);
+  const m=MODULES.find(x=>x.id===moduleId);
+  if(m) renderModuleContent(m);
+  updateModuleNavScore();
+}
+
 function setClaim(i,field,val){
   if(!currentVisit.modules['m2']) currentVisit.modules['m2']={responses:{},claims:Array(10).fill(null).map(()=>({claimId:'',nhisNo:'',date:'',amount:'',status:''})),folders:Array(10).fill(null).map(()=>({claimRef:'',patientName:'',nhisNo:'',folderFound:'',clinicalMatch:'',notes:''})),patients:[]};
   if(!currentVisit.modules['m2'].claims[i]) currentVisit.modules['m2'].claims[i]={};
@@ -3948,7 +4036,7 @@ async function pullFromSheets(visitId){
         }
       });
       // Rich captured data (Module 2's claims/folder verification,
-      // Patient Exit Interviews on Modules 3/5/6) lives in these arrays,
+      // Module 7's Patient Exit Interview) lives in these arrays,
       // entirely separate from the responses/remarks above — without
       // this, a teammate's actual captured records never appeared on
       // another device even though simple Yes/No responses did.
@@ -3958,6 +4046,11 @@ async function pullFromSheets(visitId){
           if(result.changed){ locMod[key] = result.arr; midChanged = true; }
         }
       });
+      // Module 7's OPD/IPD setting choice
+      if(remMod.setting && !locMod.setting){
+        locMod.setting = remMod.setting;
+        midChanged = true;
+      }
       if(midChanged){ local.modules[mid] = locMod; changed = true; }
     });
     }
@@ -4939,13 +5032,13 @@ function showDashboard(){
     if(missingFolders) flags.push(`<div class="sync-status-item"><div class="sync-status-icon">📁</div><div class="sync-status-info"><div class="sync-status-title">${missingFolders} Patient Folder(s) Not Found</div><div class="sync-status-sub">Module 2 — Ghost patient risk — escalate</div></div><div class="sync-status-badge err">Escalate</div></div>`);
     if(mismatch) flags.push(`<div class="sync-status-item"><div class="sync-status-icon">⚠️</div><div class="sync-status-info"><div class="sync-status-title">${mismatch} Clinical Note Mismatch(es)</div><div class="sync-status-sub">Module 2 — Upcoding/fraud risk — review</div></div><div class="sync-status-badge err">Review</div></div>`);
   }
-  ['m3','m5','m6'].forEach(mid=>{
+  ['m7'].forEach(mid=>{
     const md=currentVisit.modules&&currentVisit.modules[mid];
     if(md&&md.patients){
       const paidPats=md.patients.filter(p=>p&&(parseFloat(p.totalPaid||0)>0||p.paid==='Yes'));
       const ttl=paidPats.reduce((s,p)=>s+(parseFloat(p.totalPaid||p.otherFee||0)),0);
-      const label=mid==='m5'?'FPHC Violation':mid==='m3'?'OOP Payment (QoC)':'NHIS Top-Up';
-      if(paidPats.length) flags.push(`<div class="sync-status-item"><div class="sync-status-icon">⚠️</div><div class="sync-status-info"><div class="sync-status-title">${paidPats.length} Patient(s) Paid — ${label}</div><div class="sync-status-sub">GHS ${ttl.toFixed(2)} recorded · Module ${mid==='m3'?'3':mid==='m5'?'5':'6'}</div></div><div class="sync-status-badge err">Escalate</div></div>`);
+      const label='Illegal Payment Reported';
+      if(paidPats.length) flags.push(`<div class="sync-status-item"><div class="sync-status-icon">⚠️</div><div class="sync-status-info"><div class="sync-status-title">${paidPats.length} Patient(s) Paid — ${label}</div><div class="sync-status-sub">GHS ${ttl.toFixed(2)} recorded · Module 7</div></div><div class="sync-status-badge err">Escalate</div></div>`);
     }
   });
   if(!flags.length) flags.push(`<div class="sync-status-item"><div class="sync-status-icon">✅</div><div class="sync-status-info"><div class="sync-status-title">No critical flags detected</div><div class="sync-status-sub">Review all module scores above</div></div><div class="sync-status-badge ok">Clear</div></div>`);
@@ -6231,7 +6324,7 @@ async function generateReport() {
 
     // Patient payment flags
     let peiPaidCount = 0, peiPaidTotal = 0;
-    ['m3','m5','m6'].forEach(mid => {
+    ['m7'].forEach(mid => {
       ((mod[mid]&&mod[mid].patients)||[]).forEach(function(p){
         if (!p) return;
         const amt = parseFloat(p.totalPaid||p.otherFee||0);
@@ -6542,6 +6635,7 @@ function deriveRecommendation(id, text, response) {
     '4': 'Provider must address resource/staffing gap and submit written action plan with timeline to the NHIA District Office.',
     '5': 'Provider must immediately cease all illegal charging, refund affected members, and submit written undertaking to NHIA.',
     '6': 'Provider must immediately comply with FPHC policy; case reported to the NHIA Co-payment Directorate.',
+    '7': 'Findings from the patient exit interview must be investigated; any confirmed illegal charges refunded and case reported to the NHIA Co-payment Directorate.',
   };
   return recs[id2] || 'Provider must address this finding and submit corrective action evidence to the NHIA District Office within 30 days.';
 }
