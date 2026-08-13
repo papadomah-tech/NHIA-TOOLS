@@ -3724,8 +3724,10 @@ function saveObsSheet(){
   o.repContact       = document.getElementById('obs-rep-contact').value;
   o.tlDate           = document.getElementById('obs-tl-date').value;
   o.tlContact        = document.getElementById('obs-tl-contact').value;
+  currentVisit.lastModified = Date.now();
   dbPut('visits', currentVisit);
   showToast('Observation sheet saved','success');
+  triggerBackgroundSync();
 }
 
 async function printObsSheet(){
