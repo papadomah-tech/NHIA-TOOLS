@@ -4967,8 +4967,6 @@ function openSignaturePad(){
   });
 }
 
-var _sigResizeHandler = null;
-
 function initSignatureCanvas(){
   var canvas = document.getElementById('sig-canvas');
   if(!canvas){ console.warn('[Signature] canvas element not found'); return; }
@@ -4981,11 +4979,13 @@ function initSignatureCanvas(){
     return;
   }
 
-  var dpr = window.devicePixelRatio || 1;
-  canvas.width  = rect.width * dpr;
-  canvas.height = rect.height * dpr;
+  // Plain 1:1 CSS-pixel canvas — deliberately skips devicePixelRatio
+  // scaling. It costs a little sharpness on retina screens, but removes
+  // an entire class of coordinate-mapping bugs for a feature where
+  // reliability matters far more than crispness.
+  canvas.width  = Math.round(rect.width);
+  canvas.height = Math.round(rect.height);
   sigCtx = canvas.getContext('2d');
-  sigCtx.scale(dpr, dpr);
   sigCtx.lineWidth = 2.4;
   sigCtx.lineCap = 'round';
   sigCtx.lineJoin = 'round';
@@ -4994,24 +4994,39 @@ function initSignatureCanvas(){
 
   function getPos(e){
     var r = canvas.getBoundingClientRect();
-    var cx = e.touches ? e.touches[0].clientX : e.clientX;
-    var cy = e.touches ? e.touches[0].clientY : e.clientY;
+    var cx, cy;
+    if(e.touches && e.touches.length){ cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
+    else if(e.changedTouches && e.changedTouches.length){ cx = e.changedTouches[0].clientX; cy = e.changedTouches[0].clientY; }
+    else { cx = e.clientX; cy = e.clientY; }
     return { x: cx - r.left, y: cy - r.top };
   }
-  function start(e){ e.preventDefault(); sigDrawing = true; var p = getPos(e); sigCtx.beginPath(); sigCtx.moveTo(p.x, p.y); }
-  function move(e){ if(!sigDrawing) return; e.preventDefault(); var p = getPos(e); sigCtx.lineTo(p.x, p.y); sigCtx.stroke(); sigHasDrawn = true; }
-  function end(){ sigDrawing = false; }
+  function start(e){
+    e.preventDefault();
+    sigDrawing = true;
+    var p = getPos(e);
+    sigCtx.beginPath();
+    sigCtx.moveTo(p.x, p.y);
+    console.log('[Signature] stroke start', p.x.toFixed(0), p.y.toFixed(0));
+  }
+  function move(e){
+    if(!sigDrawing) return;
+    e.preventDefault();
+    var p = getPos(e);
+    sigCtx.lineTo(p.x, p.y);
+    sigCtx.stroke();
+    sigHasDrawn = true;
+  }
+  function end(e){ if(e) e.preventDefault(); sigDrawing = false; }
 
-  canvas.onmousedown = start; canvas.onmousemove = move; canvas.onmouseup = end; canvas.onmouseleave = end;
-  canvas.ontouchstart = start; canvas.ontouchmove = move; canvas.ontouchend = end;
-
-  // Re-measure if the viewport changes (e.g. phone rotation) while open
-  if(_sigResizeHandler) window.removeEventListener('resize', _sigResizeHandler);
-  _sigResizeHandler = function(){
-    var modalOpen = document.getElementById('modal-signature-pad').classList.contains('open');
-    if(modalOpen) initSignatureCanvas();
-  };
-  window.addEventListener('resize', _sigResizeHandler);
+  canvas.onmousedown  = start;
+  canvas.onmousemove  = move;
+  canvas.onmouseup    = end;
+  canvas.onmouseleave = end;
+  canvas.ontouchstart  = start;
+  canvas.ontouchmove   = move;
+  canvas.ontouchend    = end;
+  canvas.ontouchcancel = end;
+  console.log('[Signature] canvas ready, handlers attached');
 }
 
 function clearSignaturePad(){
