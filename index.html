@@ -723,7 +723,7 @@ html,body{height:100%;overflow:hidden}
 <div class="screen hidden" id="screen-assignment-setup">
   <div class="topbar">
     <button class="topbar-back" onclick="goBack()">&#8592;</button>
-    <div class="topbar-title">New Assignment</div>
+    <div class="topbar-title" id="as-screen-title">New Assignment</div>
   </div>
   <div class="scroll" style="padding-bottom:100px">
     <div class="card" id="as-team-picker-card" style="display:none">
@@ -762,7 +762,7 @@ html,body{height:100%;overflow:hidden}
         <input id="as-facility-count" type="number" min="1" max="20" placeholder="e.g. 5"/></div>
     </div>
   </div>
-  <button class="fab" onclick="saveAssignment()">Create Assignment &#8594;</button>
+  <button class="fab" id="as-submit-btn" onclick="saveAssignment()">Create Assignment &#8594;</button>
 </div>
 
 <!-- ══ ADMIN: TEAM SETUP ═══════════════════════════════════════════════ -->
@@ -907,6 +907,7 @@ html,body{height:100%;overflow:hidden}
     <button class="topbar-back" onclick="goBack()">&#8592;</button>
     <div class="topbar-title" id="assign-title">Assignment</div>
     <button class="topbar-action" id="assign-close-btn" onclick="closeAssignment()" style="display:none;background:rgba(224,80,80,.12);color:#e05050;border:1px solid rgba(224,80,80,.3)">Close</button>
+    <button class="topbar-action" id="assign-edit-btn" onclick="editAssignment()" style="background:rgba(26,140,91,.1);color:var(--accent2);border:1px solid rgba(26,140,91,.3);margin-left:6px" title="Edit this assignment">&#9998; Edit</button>
     <button class="topbar-action" id="assign-delete-btn" onclick="deleteAssignment(currentAssignment&&currentAssignment.id)" style="background:transparent;color:#e05050;border:1px solid rgba(224,80,80,.2);margin-left:6px" title="Delete this entire assignment">&#128465;</button>
   </div>
   <div class="scroll" style="padding-bottom:180px">
@@ -1898,6 +1899,8 @@ function applyRoleUI(){
   if(adminSection) adminSection.style.display = isAdmin ? '' : 'none';
   var assignDeleteBtn = document.getElementById('assign-delete-btn');
   if(assignDeleteBtn) assignDeleteBtn.style.display = (isLeader||isAdmin) ? '' : 'none';
+  var assignEditBtn = document.getElementById('assign-edit-btn');
+  if(assignEditBtn) assignEditBtn.style.display = (isLeader||isAdmin) ? '' : 'none';
 }
 
 // ── Team Assignments: server sync ────────────────────────────────────────
@@ -4018,7 +4021,10 @@ var currentAssignment = null;
 
 // ── Create / open ──────────────────────────────────────────────────────
 function startNewAssignment(){
+  _editingAssignmentId = null;
   showScreen('assignment-setup');
+  document.getElementById('as-screen-title').textContent = 'New Assignment';
+  document.getElementById('as-submit-btn').innerHTML = 'Create Assignment &#8594;';
   // Pre-fill defaults
   var today = new Date().toISOString().slice(0,10);
   var el;
@@ -4074,6 +4080,33 @@ function onAsTeamPicked(){
   nameField.value = (sel.value && selectedOption) ? selectedOption.textContent : '';
 }
 
+var _editingAssignmentId = null;
+
+function editAssignment(){
+  if(!currentAssignment) return;
+  _editingAssignmentId = currentAssignment.id;
+  var a = currentAssignment;
+
+  showScreen('assignment-setup');
+  document.getElementById('as-screen-title').textContent = 'Edit Assignment';
+  document.getElementById('as-submit-btn').innerHTML = 'Save Changes &#8594;';
+
+  // Team is locked during edit — reassigning an assignment to a
+  // different team is a separate, rarer operation not handled here.
+  var pickerCard = document.getElementById('as-team-picker-card');
+  if(pickerCard) pickerCard.style.display = 'none';
+  var nameField = document.getElementById('as-team-name');
+  if(nameField){ nameField.value = a.teamName || ''; nameField.readOnly = true; nameField.style.background = 'var(--surface)'; }
+
+  document.getElementById('as-leader').value = a.leader || '';
+  document.getElementById('as-members').value = (a.members || []).join('\n');
+  document.getElementById('as-district').value = a.district || '';
+  document.getElementById('as-region').value = a.region || '';
+  document.getElementById('as-start-date').value = a.startDate || '';
+  document.getElementById('as-end-date').value = a.endDate || '';
+  document.getElementById('as-facility-count').value = a.facilityCount || '';
+}
+
 async function saveAssignment(){
   var teamName  = (document.getElementById('as-team-name').value||'').trim();
   var leader    = (document.getElementById('as-leader').value||'').trim();
@@ -4085,7 +4118,9 @@ async function saveAssignment(){
   var facCount  = parseInt(document.getElementById('as-facility-count').value||'0')||0;
 
   var targetTeamId = userTeamId; // default: leader's own team
-  if(userRole === 'admin'){
+  if(userRole === 'admin' && !_editingAssignmentId){
+    // Team is locked (not re-pickable) while editing, so this check only
+    // applies when creating a brand-new assignment.
     targetTeamId = (document.getElementById('as-team-id').value||'').trim();
     if(!targetTeamId){ showToast('Please select which team this assignment is for','error'); return; }
   }
@@ -4096,6 +4131,29 @@ async function saveAssignment(){
   var members = membersRaw.split('\n').map(function(m){return m.trim();}).filter(Boolean);
   if(members.length < 3){ showToast('Add at least 3 team members','error'); return; }
   if(members.length > 5){ showToast('Maximum 5 team members allowed','error'); return; }
+
+  if(!db){ try{ db=await openDB(); }catch(e){ db=null; } }
+
+  if(_editingAssignmentId){
+    // Edit mode — update the existing record in place, preserving its
+    // id, team, status, visits, and creation date.
+    var existing = db ? await dbGet('assignments', _editingAssignmentId) : currentAssignment;
+    if(!existing){ showToast('Assignment not found','error'); _editingAssignmentId=null; return; }
+    existing.teamName      = teamName;
+    existing.leader        = leader;
+    existing.members       = members;
+    existing.district      = district;
+    existing.region        = region;
+    existing.startDate     = startDate;
+    existing.endDate       = endDate;
+    existing.facilityCount = facCount;
+    currentAssignment = existing;
+    if(db) await dbPut('assignments', currentAssignment);
+    _editingAssignmentId = null;
+    showToast('Assignment updated','success');
+    openAssignment(currentAssignment.id);
+    return;
+  }
 
   currentAssignment = {
     id:           'a_' + Date.now(),
@@ -4114,7 +4172,6 @@ async function saveAssignment(){
     doVisitId:    null, // single DO visit ID
   };
 
-  if(!db){ try{ db=await openDB(); }catch(e){ db=null; } }
   if(db) await dbPut('assignments', currentAssignment);
 
   showToast('Assignment created — now add facility visits','success');
