@@ -4957,13 +4957,30 @@ function updateSignaturePreview(){
 
 function openSignaturePad(){
   openModal('modal-signature-pad');
-  setTimeout(initSignatureCanvas, 60); // wait for the modal's open transition to finish sizing
+  // requestAnimationFrame (twice, to be safe) waits for an actual layout
+  // + paint cycle before we measure the canvas — a fixed setTimeout delay
+  // was racing the modal's open animation on some devices, occasionally
+  // measuring the canvas before it had real dimensions and creating a
+  // zero-size, invisible, non-functional drawing surface.
+  requestAnimationFrame(function(){
+    requestAnimationFrame(initSignatureCanvas);
+  });
 }
+
+var _sigResizeHandler = null;
 
 function initSignatureCanvas(){
   var canvas = document.getElementById('sig-canvas');
-  if(!canvas) return;
+  if(!canvas){ console.warn('[Signature] canvas element not found'); return; }
   var rect = canvas.getBoundingClientRect();
+  console.log('[Signature] canvas rect:', rect.width, 'x', rect.height);
+
+  if(rect.width < 10 || rect.height < 10){
+    console.log('[Signature] rect too small, retrying...');
+    setTimeout(initSignatureCanvas, 120);
+    return;
+  }
+
   var dpr = window.devicePixelRatio || 1;
   canvas.width  = rect.width * dpr;
   canvas.height = rect.height * dpr;
@@ -4987,6 +5004,14 @@ function initSignatureCanvas(){
 
   canvas.onmousedown = start; canvas.onmousemove = move; canvas.onmouseup = end; canvas.onmouseleave = end;
   canvas.ontouchstart = start; canvas.ontouchmove = move; canvas.ontouchend = end;
+
+  // Re-measure if the viewport changes (e.g. phone rotation) while open
+  if(_sigResizeHandler) window.removeEventListener('resize', _sigResizeHandler);
+  _sigResizeHandler = function(){
+    var modalOpen = document.getElementById('modal-signature-pad').classList.contains('open');
+    if(modalOpen) initSignatureCanvas();
+  };
+  window.addEventListener('resize', _sigResizeHandler);
 }
 
 function clearSignaturePad(){
