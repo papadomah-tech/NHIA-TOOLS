@@ -1570,17 +1570,19 @@ const MODULES = [
   },
   // ══════════════════════════════════════════════════════════════════
   // MODULE 7 — PATIENT EXIT INTERVIEW
-  // One interview per visit, one patient. Uses the same interview form
-  // that used to be duplicated across Modules 3, 5, and 6 — restored
-  // here verbatim (demographics, service received, fee-by-category
-  // breakdown, receipt check, quality of care & rights, monitor's
-  // notes), with an OPD/IPD selector added up front. IPD adds a set of
-  // admission/ward/discharge questions on top of the same core
-  // interview. Score is derived automatically from the interview
-  // answers — nothing to separately tap.
+  // Up to 10 patient interviews per visit (at least 1 expected) — the
+  // officer adds as many as needed, up to that cap. Uses the same
+  // interview form that used to be duplicated across Modules 3, 5, and
+  // 6 — restored here verbatim (demographics, service received,
+  // fee-by-category breakdown, receipt check, quality of care &
+  // rights, monitor's notes), with an OPD/IPD selector added up front.
+  // IPD adds a set of admission/ward/discharge questions on top of the
+  // same core interview, per patient. Score is derived automatically
+  // from the interview answers, aggregated across every patient
+  // actually interviewed — nothing to separately tap.
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m7', num:'07', title:'Patient Exit Interview', color:'#C0392B', maxScore:83,
+    id:'m7', num:'07', title:'Patient Exit Interview', color:'#C0392B', maxScore:45,
     hasPatientInterview:true, interviewLabel:'Patient Exit Interview', hasSettingSelector:true,
   },
 ];
@@ -2563,8 +2565,8 @@ function renderModuleList(){
 
 function allIndicatorsFilled(module, data){
   if(module.id==='m7'){
-    var p = (data && data.patients && data.patients[0]) || {};
-    return !!(p.serviceReceived && p.nhisStatus);
+    var patients = (data && data.patients) || [];
+    return patients.some(function(p){ return p && p.serviceReceived && p.nhisStatus; });
   }
   if(!data||!data.responses) return false;
   const pType = currentVisit&&currentVisit.setup?currentVisit.setup.providerType||'':'';
@@ -2597,31 +2599,32 @@ function renderRing(){
 // interview's answers — there's nothing separately tapped by the
 // officer. IPD adds five extra criteria on top of the shared ones.
 function calcPEIScore(data){
-  var p = (data && data.patients && data.patients[0]) || {};
+  var patients = (data && data.patients) || [];
   var setting = data && data.setting;
-  var hasAnyAnswer = p.serviceReceived || p.nhisStatus || p.gender;
-  if(!hasAnyAnswer) return {score:0,max:0,pct:0};
+  var recorded = patients.filter(function(p){ return p && (p.serviceReceived || p.nhisStatus || p.gender); });
+  if(!recorded.length) return {score:0,max:0,pct:0};
 
-  var totalFees = parseFloat(p.registrationFee||0)+parseFloat(p.consultFee||0)+parseFloat(p.medicineFee||0)+parseFloat(p.labFee||0)+parseFloat(p.otherFee||0);
-
-  var items = [
-    { ok: totalFees===0, weight:12 },
-    { ok: p.receiptGiven==='Yes' || totalFees===0, weight:8 },
-    { ok: p.complainAware==='Yes', weight:6 },
-    { ok: p.privacyMaintained==='Yes', weight:7 },
-    { ok: p.consentObtained==='Yes'||p.consentObtained==='N/A', weight:6 },
-    { ok: parseInt(p.qualityRating||0) >= 4, weight:6 },
-  ];
-  if(setting==='IPD'){
-    items.push({ ok: p.admissionExplained==='Yes', weight:9 });
-    items.push({ ok: p.wardConditions==='Yes', weight:6 });
-    items.push({ ok: p.lengthOfStayOk==='Yes', weight:5 });
-    items.push({ ok: p.dischargeWithheld==='No', weight:10 });
-    items.push({ ok: p.wardFeesCharged==='No', weight:8 });
-  }
-  var score=0,max=0;
-  items.forEach(function(it){ max+=it.weight; if(it.ok) score+=it.weight; });
-  return {score:Math.round(score), max:max, pct: max?Math.round(score/max*100):0};
+  var totalScore=0, totalMax=0;
+  recorded.forEach(function(p){
+    var totalFees = parseFloat(p.registrationFee||0)+parseFloat(p.consultFee||0)+parseFloat(p.medicineFee||0)+parseFloat(p.labFee||0)+parseFloat(p.otherFee||0);
+    var items = [
+      { ok: totalFees===0, weight:12 },
+      { ok: p.receiptGiven==='Yes' || totalFees===0, weight:8 },
+      { ok: p.complainAware==='Yes', weight:6 },
+      { ok: p.privacyMaintained==='Yes', weight:7 },
+      { ok: p.consentObtained==='Yes'||p.consentObtained==='N/A', weight:6 },
+      { ok: parseInt(p.qualityRating||0) >= 4, weight:6 },
+    ];
+    if(setting==='IPD'){
+      items.push({ ok: p.admissionExplained==='Yes', weight:9 });
+      items.push({ ok: p.wardConditions==='Yes', weight:6 });
+      items.push({ ok: p.lengthOfStayOk==='Yes', weight:5 });
+      items.push({ ok: p.dischargeWithheld==='No', weight:10 });
+      items.push({ ok: p.wardFeesCharged==='No', weight:8 });
+    }
+    items.forEach(function(it){ totalMax+=it.weight; if(it.ok) totalScore+=it.weight; });
+  });
+  return {score:Math.round(totalScore), max:totalMax, pct: totalMax?Math.round(totalScore/totalMax*100):0};
 }
 
 function calcModuleScore(module, data, providerType){
@@ -2898,7 +2901,7 @@ function renderModuleContent(m){
 
   // ── Patient Exit Interviews (M3, M5, M6) ──────────────────────────
   if(m.hasPatientInterview){
-    const COUNT = m.id==='m3' ? 5 : m.id==='m7' ? 1 : 10;
+    const COUNT = m.id==='m3' ? 5 : m.id==='m7' ? 10 : 10;
     const patients=data.patients||Array(COUNT).fill(null).map(()=>({gender:'',ageGroup:'',nhisStatus:'',serviceReceived:'',registrationFee:'',consultFee:'',medicineFee:'',labFee:'',otherFee:'',otherFeeDesc:'',totalPaid:'',receiptGiven:'',complainAware:'',consentObtained:'',privacyMaintained:'',qualityRating:'',notes:'',paid:'',admissionExplained:'',wardConditions:'',lengthOfStayOk:'',dischargeWithheld:'',wardFeesCharged:''}));
     const minReq = m.id==='m3' ? 5 : m.id==='m7' ? 1 : 10;
 
