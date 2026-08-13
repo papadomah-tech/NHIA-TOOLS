@@ -1465,7 +1465,7 @@ const MODULES = [
   // Source: Wappy1 — Clinical & Service Delivery Monitoring section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m3', num:'03', title:'Clinical & Service Delivery', color:'#2E86C1', maxScore:110,
+    id:'m3', num:'03', title:'Clinical & Service Delivery', color:'#2E86C1', maxScore:104,
     sections:[
       {title:'A. Clinical Practice & Rational Drug Use', items:[
         {id:'3.1', text:'Average prescriptions per attendance calculated and compared with NHIS guidelines — polypharmacy cases flagged and investigated (enter figures to calculate)', weight:9, hasPrescriptionCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
@@ -1496,7 +1496,7 @@ const MODULES = [
   // Source: Wappy1 — Facility Resources section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m4', num:'04', title:'Facility Resources', color:'#117A65', maxScore:120,
+    id:'m4', num:'04', title:'Facility Resources', color:'#117A65', maxScore:99,
     hasStaffing:true, hasServices:true, hasUtilisation:true, hasQualMgmt:true,
     indicators:[
       // A. Drugs & Diagnostics
@@ -1541,7 +1541,7 @@ const MODULES = [
   // CHPS Compounds and Health Centres only
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m6', num:'06', title:'Free Primary Health Care (FPHC) Compliance', color:'#8E44AD', maxScore:90,
+    id:'m6', num:'06', title:'Free Primary Health Care (FPHC) Compliance', color:'#8E44AD', maxScore:124,
     chpsOnly:true,
     sections:[
       {title:'A. Service Access & Zero-Fee Compliance', items:[
@@ -1582,7 +1582,11 @@ const MODULES = [
   // actually interviewed — nothing to separately tap.
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m7', num:'07', title:'Patient Exit Interview', color:'#C0392B', maxScore:45,
+    id:'m7', num:'07', title:'Patient Exit Interview', color:'#C0392B',
+    // No single maxScore here — unlike M1-M6, this scales with how many
+    // patients are interviewed (up to 10) and whether OPD or IPD is
+    // selected: 45 pts/patient for OPD, 83 pts/patient for IPD. See
+    // calcPEIScore() for the actual weighted criteria.
     hasPatientInterview:true, interviewLabel:'Patient Exit Interview', hasSettingSelector:true,
   },
 ];
