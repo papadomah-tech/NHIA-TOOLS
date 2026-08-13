@@ -834,11 +834,22 @@ html,body{height:100%;overflow:hidden}
     <div style="border:1.5px solid var(--border);border-radius:8px;overflow:hidden;background:#fff">
       <canvas id="sig-canvas" style="width:100%;height:180px;touch-action:none;display:block"></canvas>
     </div>
-    <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center">Draw with your finger or mouse</div>
+    <div id="sig-pad-status" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;min-height:14px">Loading…</div>
     <div style="display:flex;gap:8px;margin-top:12px">
       <button class="btn" style="width:auto;flex:1" onclick="clearSignaturePad()">Clear</button>
       <button class="btn btn-primary" style="width:auto;flex:1" onclick="saveSignaturePad()">Save Signature</button>
     </div>
+
+    <div style="display:flex;align-items:center;gap:10px;margin:18px 0 12px">
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+      <div style="font-size:11px;color:var(--muted);font-weight:600">OR</div>
+      <div style="flex:1;height:1px;background:var(--border)"></div>
+    </div>
+    <label class="btn" style="width:100%;display:flex;align-items:center;justify-content:center;background:var(--surface);color:var(--text);border:1.5px dashed var(--border);cursor:pointer">
+      📷 Upload a Photo/Scan of Your Signature
+      <input type="file" accept="image/*" style="display:none" onchange="handleSignatureUpload(this)"/>
+    </label>
+    <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center">If drawing isn't working on your device, sign on paper, photograph or scan it, and upload it here instead.</div>
   </div>
 </div>
 
@@ -4953,19 +4964,20 @@ function updateSignaturePreview(){
 
 function openSignaturePad(){
   openModal('modal-signature-pad');
-  // requestAnimationFrame (twice, to be safe) waits for an actual layout
-  // + paint cycle before we measure the canvas — a fixed setTimeout delay
-  // was racing the modal's open animation on some devices, occasionally
-  // measuring the canvas before it had real dimensions and creating a
-  // zero-size, invisible, non-functional drawing surface.
+  setSigPadStatus('Loading…');
   requestAnimationFrame(function(){
     requestAnimationFrame(initSignatureCanvas);
   });
 }
 
+function setSigPadStatus(msg){
+  var el = document.getElementById('sig-pad-status');
+  if(el) el.textContent = msg;
+}
+
 function initSignatureCanvas(){
   var canvas = document.getElementById('sig-canvas');
-  if(!canvas){ console.warn('[Signature] canvas element not found'); return; }
+  if(!canvas){ console.warn('[Signature] canvas element not found'); setSigPadStatus('Error: canvas not found'); return; }
   var rect = canvas.getBoundingClientRect();
   console.log('[Signature] canvas rect:', rect.width, 'x', rect.height);
 
@@ -4975,10 +4987,6 @@ function initSignatureCanvas(){
     return;
   }
 
-  // Plain 1:1 CSS-pixel canvas — deliberately skips devicePixelRatio
-  // scaling. It costs a little sharpness on retina screens, but removes
-  // an entire class of coordinate-mapping bugs for a feature where
-  // reliability matters far more than crispness.
   canvas.width  = Math.round(rect.width);
   canvas.height = Math.round(rect.height);
   sigCtx = canvas.getContext('2d');
@@ -4990,19 +4998,16 @@ function initSignatureCanvas(){
 
   function getPos(e){
     var r = canvas.getBoundingClientRect();
-    var cx, cy;
-    if(e.touches && e.touches.length){ cx = e.touches[0].clientX; cy = e.touches[0].clientY; }
-    else if(e.changedTouches && e.changedTouches.length){ cx = e.changedTouches[0].clientX; cy = e.changedTouches[0].clientY; }
-    else { cx = e.clientX; cy = e.clientY; }
-    return { x: cx - r.left, y: cy - r.top };
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
   }
   function start(e){
     e.preventDefault();
+    try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
     sigDrawing = true;
     var p = getPos(e);
     sigCtx.beginPath();
     sigCtx.moveTo(p.x, p.y);
-    console.log('[Signature] stroke start', p.x.toFixed(0), p.y.toFixed(0));
+    setSigPadStatus('Drawing…');
   }
   function move(e){
     if(!sigDrawing) return;
@@ -5012,17 +5017,24 @@ function initSignatureCanvas(){
     sigCtx.stroke();
     sigHasDrawn = true;
   }
-  function end(e){ if(e) e.preventDefault(); sigDrawing = false; }
+  function end(e){
+    if(e) e.preventDefault();
+    sigDrawing = false;
+    if(sigHasDrawn) setSigPadStatus('Looks good — tap Save Signature');
+  }
 
-  canvas.onmousedown  = start;
-  canvas.onmousemove  = move;
-  canvas.onmouseup    = end;
-  canvas.onmouseleave = end;
-  canvas.ontouchstart  = start;
-  canvas.ontouchmove   = move;
-  canvas.ontouchend    = end;
-  canvas.ontouchcancel = end;
-  console.log('[Signature] canvas ready, handlers attached');
+  // Pointer Events unify mouse, touch, and stylus into one model — this
+  // replaces separate mouse/touch handlers, which is where two earlier
+  // attempts at this feature kept running into device-specific bugs.
+  canvas.onpointerdown = start;
+  canvas.onpointermove = move;
+  canvas.onpointerup   = end;
+  canvas.onpointercancel = end;
+  canvas.onpointerleave  = end;
+  canvas.style.touchAction = 'none';
+
+  console.log('[Signature] canvas ready, pointer handlers attached');
+  setSigPadStatus('Ready — draw above with your finger, mouse, or stylus');
 }
 
 function clearSignaturePad(){
@@ -5030,6 +5042,7 @@ function clearSignaturePad(){
   if(!canvas || !sigCtx) return;
   sigCtx.clearRect(0, 0, canvas.width, canvas.height);
   sigHasDrawn = false;
+  setSigPadStatus('Cleared — draw above');
 }
 
 async function saveSignaturePad(){
@@ -5037,6 +5050,28 @@ async function saveSignaturePad(){
   if(!sb || !currentUser){ showToast('Not signed in','error'); return; }
   var canvas = document.getElementById('sig-canvas');
   var dataUrl = canvas.toDataURL('image/png');
+  await persistSignature(dataUrl);
+}
+
+// Fallback path: upload a photo/scan of a signature instead of drawing
+// one, for anyone who hits drawing trouble on their device.
+async function handleSignatureUpload(inputEl){
+  var file = inputEl.files && inputEl.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ showToast('Please choose an image file','error'); return; }
+  if(file.size > 3*1024*1024){ showToast('Image is too large — please use a file under 3MB','error'); return; }
+
+  var reader = new FileReader();
+  reader.onload = async function(){
+    await persistSignature(reader.result);
+    inputEl.value = ''; // reset so the same file can be re-selected later if needed
+  };
+  reader.onerror = function(){ showToast('Failed to read that image','error'); };
+  reader.readAsDataURL(file);
+}
+
+// Shared save path for both the drawn canvas and an uploaded image.
+async function persistSignature(dataUrl){
   var { error } = await sb.rpc('save_my_signature', { p_signature_data: dataUrl });
   if(error){ showToast('Failed to save: '+error.message,'error'); return; }
   mySignatureData = dataUrl;
