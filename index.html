@@ -1500,7 +1500,7 @@ const MODULES = [
     indicators:[
       // A. Drugs & Diagnostics
       {id:'4.1', text:'RDTs (malaria test kits) available, adequately stocked, within expiry date, and stock cards maintained and up to date', weight:9, section:'A. Drugs & Diagnostics', levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital','Diagnostic/Lab Centre']},
-      {id:'4.2', text:'Top 5 essential NHIS medicines cross-checked against stock cards and claims — available, within expiry, no stockout in the period', weight:10, section:'A. Drugs & Diagnostics', levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital','Pharmacy']},
+      {id:'4.2', text:'Top 5 essential NHIS medicines cross-checked against stock cards and claims — available, within expiry, no stockout in the period', weight:10, section:'A. Drugs & Diagnostics', hasMedicineCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital','Pharmacy']},
       // B. Infrastructure & Equipment
       {id:'4.3', text:'Physical bed count conducted and bed occupancy rate calculated — capacity assessed relative to current patient load and service level', weight:7, section:'B. Infrastructure & Equipment', hasBedCalc:true, levels:['Health Centre','Public Hospital','Private Hospital']},
       {id:'4.4', text:'Facility walkthrough: OPD and wards clean, orderly, and well-maintained; cleanliness rated satisfactory', weight:7, section:'B. Infrastructure & Equipment'},
@@ -2797,6 +2797,42 @@ function renderModuleContent(m){
             + '</div>'
             + '</div>';
     }
+    // 4.2 — Essential NHIS Medicines Availability Check. Five rows —
+    // medicine name (pick from the list or type your own), then three
+    // straightforward checks matching exactly what the indicator asks
+    // for: available now, within expiry, no stockout during the
+    // period. Compliance is derived automatically per medicine.
+    if(ind.hasMedicineCalc){
+      var med = (data.medicineCalc || {});
+      var medRows = '';
+      for(var mdi=1; mdi<=5; mdi++){
+        var nameKey = 'm'+mdi+'_name', availKey = 'm'+mdi+'_avail', expKey = 'm'+mdi+'_exp', stockKey = 'm'+mdi+'_stock';
+        var nameVal = med[nameKey] || '', availVal = med[availKey] || '', expVal = med[expKey] || '', stockVal = med[stockKey] || '';
+        medRows += '<div style="border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:8px" id="med-row-'+mdi+'">'
+          + '<input class="med-calc-input" data-medkey="'+nameKey+'" list="essential-medicines-list" type="text" placeholder="Medicine #'+mdi+' name" value="'+nameVal+'"'
+          + ' style="width:100%;padding:7px 8px;font-size:13px;font-weight:700;border:1.5px solid var(--border);border-radius:6px;margin-bottom:8px"/>'
+          + '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px">'
+          + medYnSelect(mdi,'avail','Available now?',availVal)
+          + medYnSelect(mdi,'exp','Within expiry?',expVal)
+          + medYnSelect(mdi,'stock','No stockout in period?',stockVal)
+          + '</div></div>';
+      }
+      base += '<datalist id="essential-medicines-list">'
+        + ['Paracetamol','Amoxicillin','Artemether-Lumefantrine (AL)','ORS + Zinc','Metronidazole',
+           'Ferrous Sulphate + Folic Acid','Diclofenac','Ciprofloxacin','Ampiclox','Ceftriaxone Injection',
+           'Cotrimoxazole','Albendazole / Mebendazole','Chlorpheniramine','Omeprazole','Salbutamol',
+           'Magnesium Trisilicate','Multivitamins','Gentamicin Injection','Hydrochlorothiazide',
+           'Metformin','Amlodipine','Ibuprofen','Vitamin A','Tetracycline Eye Ointment'
+          ].map(function(c){ return '<option value="'+c+'">'; }).join('')
+        + '</datalist>';
+      base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
+        + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">💊 Essential NHIS Medicines — Stock Check</div>'
+        + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">Pick 5 essential medicines from the list (or type your own) and cross-check each against stock cards / claims.</div>'
+        + medRows
+        + '<div id="med-summary" style="margin-top:6px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">Enter medicine names and answers above to see compliance here.</div>'
+        + '</div>';
+    }
+
     // 3.1 — Prescription Rate Calculator (sample-based encounter review,
     // per WHO/INRUD Core Drug Use Indicators methodology — built for
     // facilities that don't maintain aggregate prescribing totals).
@@ -3636,6 +3672,10 @@ function renderModuleContent(m){
   document.getElementById('module-content').querySelectorAll('.morb-calc-input').forEach(function(el){
     el.addEventListener('input', function(){ setMorbidCalc(this.dataset.mokey, this.value); });
   });
+  // Essential medicines availability calc
+  document.getElementById('module-content').querySelectorAll('.med-calc-input').forEach(function(el){
+    el.addEventListener(el.tagName==='SELECT' ? 'change' : 'input', function(){ setMedicineCalc(this.dataset.medkey, this.value); });
+  });
   // Zoom tariff calc
   document.getElementById('module-content').querySelectorAll('.zoom-calc-input').forEach(function(el){
     el.addEventListener('input', function(){ setZoomCalc(this.dataset.zmfield, this.value); });
@@ -3765,6 +3805,54 @@ function setPrescCalc(field, val){
     :' &nbsp;<span style="color:#22c99a">✓ Within NHIS guideline (≤2.0)</span>')
     +sampleNote;
   sumEl.style.color='var(--text)';
+}
+
+// Small Yes/No/— select used within each medicine row of the
+// Essential NHIS Medicines calculator.
+function medYnSelect(rowIdx, field, label, val){
+  var key = 'm'+rowIdx+'_'+field;
+  return '<div><label style="font-size:9px;color:var(--muted);display:block;margin-bottom:2px">'+label+'</label>'
+    + '<select class="med-calc-input" data-medkey="'+key+'" style="width:100%;padding:5px 4px;font-size:11px;border:1.5px solid var(--border);border-radius:5px">'
+    + '<option value=""'+(!val?' selected':'')+'>—</option>'
+    + '<option value="Yes"'+(val==='Yes'?' selected':'')+'>Yes</option>'
+    + '<option value="No"'+(val==='No'?' selected':'')+'>No</option>'
+    + '</select></div>';
+}
+
+function setMedicineCalc(field, val){
+  if(!field) return;
+  var mid = 'm4';
+  if(!currentVisit.modules) currentVisit.modules = {};
+  if(!currentVisit.modules[mid]) currentVisit.modules[mid]={responses:{},remarks:{},m4data:{}};
+  if(!currentVisit.modules[mid].medicineCalc) currentVisit.modules[mid].medicineCalc={};
+  currentVisit.modules[mid].medicineCalc[field] = val;
+  dbPut('visits', currentVisit);
+
+  var med = currentVisit.modules[mid].medicineCalc;
+  var named = 0, compliant = 0, issues = [];
+  for(var i=1; i<=5; i++){
+    var name = (med['m'+i+'_name']||'').trim();
+    if(!name) continue;
+    named++;
+    var avail = med['m'+i+'_avail']||'', exp = med['m'+i+'_exp']||'', stock = med['m'+i+'_stock']||'';
+    if(avail==='Yes' && exp==='Yes' && stock==='Yes'){
+      compliant++;
+    } else if(avail || exp || stock){
+      var probs = [];
+      if(avail==='No') probs.push('not available');
+      if(exp==='No') probs.push('expired');
+      if(stock==='No') probs.push('had a stockout');
+      if(probs.length) issues.push(name+' ('+probs.join(', ')+')');
+    }
+  }
+  var sumEl = document.getElementById('med-summary');
+  if(!sumEl) return;
+  if(named===0){ sumEl.textContent='Enter medicine names and answers above to see compliance here.'; sumEl.style.color='var(--muted)'; return; }
+  var pct = Math.round(compliant/named*100);
+  var col = pct===100?'#22c99a':pct>=60?'var(--gold)':'#e05050';
+  sumEl.innerHTML = '<strong>'+compliant+' of '+named+' medicine(s) fully compliant</strong> — <strong style="color:'+col+'">'+pct+'%</strong>'
+    + (issues.length ? '<br><span style="color:#e05050">⚠ Issues: '+issues.join('; ')+'</span>' : (compliant===named ? ' &nbsp;<span style="color:#22c99a">✓ No issues found</span>' : ''));
+  sumEl.style.color = 'var(--text)';
 }
 
 function setMorbidCalc(field, val){
