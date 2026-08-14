@@ -4091,26 +4091,64 @@ function showObsSheet(){
   showScreen('obs');
 }
 
+// Single shared list of what the Observation Sheet's findings sections
+// cover — used by BOTH the on-screen editable sheet and the printed
+// version, so they can never drift out of sync with each other again.
+// Previously these were two separate hardcoded lists that disagreed
+// (the screen version covered only M1/M2/M5, the print version
+// covered M1–M5) — meaning the printed sheet could contain
+// auto-generated text for a module the officer never saw or reviewed
+// on screen. Also previously neither list included M6 or M7 at all.
+var OBS_THEMATIC = [
+  {no:1, id:'m1', label:'Administrative Compliance'},
+  {no:2, id:'m2', label:'Claims Management'},
+  {no:3, id:'m3', label:'Clinical & Service Delivery Monitoring'},
+  {no:4, id:'m4', label:'Facility Resources (Drugs, Equipment, Staffing, Infrastructure)'},
+  {no:5, id:'m5', label:'Detection & Monitoring of Co-Payments / Illegal Payments'},
+  {no:6, id:'m6', label:'Free Primary Health Care (FPHC) Compliance'},
+  {no:7, id:'m7', label:'Patient Exit Interview'},
+  {no:8, id:null, label:'Abuse & Waste Indicators'},
+  {no:9, id:null, label:'Previous Recommendations Implementation'},
+];
+
+// M7 (Patient Exit Interview) doesn't use the standard indicators/
+// responses structure the other modules do — its data lives in a
+// .patients array instead. This derives the same kind of "findings"
+// list (problem + context) from that data, so M7 issues actually
+// surface on the Observation Sheet instead of always showing empty.
+function extractPEIFindings(m7Data){
+  var patients = (m7Data && m7Data.patients) || [];
+  var setting = m7Data && m7Data.setting;
+  var findings = [];
+  patients.forEach(function(p, idx){
+    if(!p || !(p.serviceReceived || p.nhisStatus)) return;
+    var who = 'Patient #'+(idx+1);
+    var totalFees = parseFloat(p.registrationFee||0)+parseFloat(p.consultFee||0)+parseFloat(p.medicineFee||0)+parseFloat(p.labFee||0)+parseFloat(p.otherFee||0);
+    if(totalFees>0) findings.push({id:'PEI-'+(idx+1), text:who+' reported paying GHS '+totalFees.toFixed(2), response:'No', remark:p.notes||''});
+    if(p.receiptGiven==='No') findings.push({id:'PEI-'+(idx+1), text:who+' — no receipt issued for payment made', response:'No', remark:''});
+    if(p.privacyMaintained==='No') findings.push({id:'PEI-'+(idx+1), text:who+' — privacy not maintained during consultation', response:'No', remark:''});
+    if(p.consentObtained==='No') findings.push({id:'PEI-'+(idx+1), text:who+' — consent not obtained before procedure', response:'No', remark:''});
+    if(setting==='IPD' && p.dischargeWithheld==='Yes') findings.push({id:'PEI-'+(idx+1), text:who+' — discharge withheld pending payment', response:'No', remark:''});
+    if(setting==='FPHC' && p.informedFree==='No') findings.push({id:'PEI-'+(idx+1), text:who+' — not informed services were free under FPHC', response:'No', remark:''});
+  });
+  return findings;
+}
+
 function buildObsFindingsList(obs){
   var mod = currentVisit.modules || {};
   var obsOverrides = (obs && obs.overrides) || {};
 
-  // Map module id to thematic area number and label
-  var THEMATIC = [
-    {no:1, id:'m1', label:'Administrative Compliance'},
-    {no:2, id:'m2', label:'Claims Management'},
-    {no:5, id:'m5', label:'Detection & Monitoring of Co-Payments / Illegal Payments'},
-  ];
-
   var html = '';
-  THEMATIC.forEach(function(th){
+  OBS_THEMATIC.forEach(function(th){
     var mData = mod[th.id] || {};
     var resp  = mData.responses || {};
     var rmks  = mData.remarks   || {};
     var mDef  = MODULES.find(function(m){ return m.id === th.id; });
     var findings = [];
 
-    if(mDef){
+    if(th.id === 'm7'){
+      findings = extractPEIFindings(mData);
+    } else if(mDef){
       var inds = mDef.indicators || (mDef.sections ? mDef.sections.flatMap(function(s){ return s.items; }) : []);
       inds.forEach(function(ind){
         var r = resp[ind.id];
@@ -4201,22 +4239,20 @@ async function buildObsPrintHtml(){
   var mod = currentVisit.modules  || {};
   var ov  = obs.overrides || {};
 
-  var THEMATIC = [
-    {no:1, id:'m1', label:'Administrative Compliance'},
-    {no:2, id:'m2', label:'Claims Management'},
-    {no:3, id:'m3', label:'Clinical & Service Delivery Monitoring'},
-    {no:4, id:'m4', label:'Facility Resources (Drugs, Equipment, Staffing, Infrastructure)'},
-    {no:5, id:'m5', label:'Detection & Monitoring of Co-Payments / Illegal Payments'},
-    {no:6, id:null, label:'Abuse & Waste Indicators'},
-    {no:7, id:null, label:'Previous Recommendations Implementation'},
-  ];
+  var THEMATIC = OBS_THEMATIC;
 
   var visitDate = s.date ? new Date(s.date+'T00:00:00').toLocaleDateString('en-GH',{day:'numeric',month:'long',year:'numeric'}) : '—';
 
   var rows = '';
   THEMATIC.forEach(function(th){
     var obsText = '', riskVal = '';
-    if(th.id){
+    if(th.id === 'm7'){
+      var m7Data = mod.m7 || {};
+      var peiFindings = extractPEIFindings(m7Data);
+      var autoText7 = peiFindings.map(function(f,i){ return (i+1)+'. '+f.text+(f.remark?' — '+f.remark:''); }).join('\n');
+      obsText = ov['text_m7'] !== undefined ? ov['text_m7'] : autoText7;
+      riskVal = ov['risk_m7'] || (peiFindings.length ? 'H' : 'L');
+    } else if(th.id){
       var mData = mod[th.id] || {};
       var resp  = mData.responses || {};
       var rmks  = mData.remarks   || {};
@@ -4230,7 +4266,7 @@ async function buildObsPrintHtml(){
       }
       obsText  = ov['text_'+th.id] !== undefined ? ov['text_'+th.id] : autoText;
       riskVal  = ov['risk_'+th.id] || riskVal;
-    } else if(th.no===6){
+    } else if(th.no===8){
       obsText  = ov['text_m_abuse'] !== undefined ? ov['text_m_abuse'] : (obs.abuseWaste||'');
       riskVal  = ov['risk_m_abuse'] || obs.abuseWasteRisk || '';
     } else {
