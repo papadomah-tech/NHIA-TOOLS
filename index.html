@@ -1469,7 +1469,7 @@ const MODULES = [
     sections:[
       {title:'A. Clinical Practice & Rational Drug Use', items:[
         {id:'3.1', text:'Prescription rate assessed by sampling patient encounters (OPD register/folders) and counting medicines prescribed per encounter — compared against NHIS guidelines; polypharmacy cases flagged and investigated', weight:9, hasPrescriptionCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
-        {id:'3.2', text:'Top 10 OPD morbidity cases for last 3 months obtained and compared with claims — disease pattern consistent with claims profile', weight:9, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
+        {id:'3.2', text:'Top OPD morbidity cases sampled from the register and compared with claims data — disease pattern consistent with claims profile', weight:9, hasMorbidityCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
         {id:'3.3', text:'OPD register cross-referenced with claims — total OPD figures, insured (NHIS) and non-insured patients extracted; insured-to-total ratio calculated and trended over 3 months', weight:8, hasAttendanceCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
         {id:'3.3b', text:'Zoom (Detention for Observation) tariff — number of Zoom submissions calculated as a ratio of total OPD claims submissions; ratio benchmarked to detect possible Zoom tariff abuse', weight:8, hasZoomCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic']},
       ]},
@@ -2832,6 +2832,42 @@ function renderModuleContent(m){
         + '</div>';
     }
 
+    // 3.2 — Top Morbidity Comparison (register sample vs. claims)
+    // Register-side tallying always works in the field. Claims-side is
+    // optional — most officers won't have live claims access on a
+    // visit, so leaving it blank clearly flags the indicator for desk
+    // review against claims data rather than silently skipping the
+    // comparison.
+    if(ind.hasMorbidityCalc){
+      var mo = (data.morbidCalc || {});
+      var MORB_N = 20;
+      var moRows = '';
+      for(var mi=1; mi<=MORB_N; mi++){
+        var dxKey = 'r'+mi+'_dx';
+        var dxVal = mo[dxKey] || '';
+        moRows += '<input class="morb-calc-input" data-mokey="'+dxKey+'" type="text" placeholder="#'+mi+' diagnosis" value="'+dxVal+'"'
+          + ' style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;background:#fafbff;margin-bottom:6px;width:100%"/>';
+      }
+      var claimsRows = '';
+      for(var ci=1; ci<=10; ci++){
+        var cxKey = 'c'+ci+'_dx';
+        var cxVal = mo[cxKey] || '';
+        claimsRows += '<input class="morb-calc-input" data-mokey="'+cxKey+'" type="text" placeholder="#'+ci+' claims diagnosis" value="'+cxVal+'"'
+          + ' style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;background:#fafbff;margin-bottom:6px;width:100%"/>';
+      }
+      base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
+        + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">📋 Top Morbidity — Register Sample</div>'
+        + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">Sample at least 20 register entries and enter each diagnosis (short-hand is fine — e.g. "malaria", "URTI"). The app tallies these into a ranked top-10 automatically.</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">' + moRows + '</div>'
+        + '<div id="morb-top10" style="margin-top:6px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">Enter diagnoses above to see the ranked top 10.</div>'
+        + '<div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">'
+        + '<div style="font-size:11px;font-weight:700;color:var(--gold);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">🧾 Top Diagnoses on Claims (optional — enter only if you have claims data on hand)</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:0 10px">' + claimsRows + '</div>'
+        + '</div>'
+        + '<div id="morb-summary" style="margin-top:10px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">Register data captured — claims-side comparison pending desk review.</div>'
+        + '</div>';
+    }
+
     // 3.3b — Zoom Tariff Ratio Calculator
     if(ind.hasZoomCalc){
       var zm = (data.zoomCalc || {});
@@ -3524,6 +3560,10 @@ function renderModuleContent(m){
   document.getElementById('module-content').querySelectorAll('.px-calc-input').forEach(function(el){
     el.addEventListener('input', function(){ setPrescCalc(this.dataset.pxkey, this.value); });
   });
+  // Top morbidity comparison calc
+  document.getElementById('module-content').querySelectorAll('.morb-calc-input').forEach(function(el){
+    el.addEventListener('input', function(){ setMorbidCalc(this.dataset.mokey, this.value); });
+  });
   // Zoom tariff calc
   document.getElementById('module-content').querySelectorAll('.zoom-calc-input').forEach(function(el){
     el.addEventListener('input', function(){ setZoomCalc(this.dataset.zmfield, this.value); });
@@ -3653,6 +3693,74 @@ function setPrescCalc(field, val){
     :' &nbsp;<span style="color:#22c99a">✓ Within NHIS guideline (≤2.0)</span>')
     +sampleNote;
   sumEl.style.color='var(--text)';
+}
+
+function setMorbidCalc(field, val){
+  if(!field) return;
+  var mid = 'm3';
+  if(!currentVisit.modules) currentVisit.modules = {};
+  if(!currentVisit.modules[mid]) currentVisit.modules[mid]={responses:{},claims:[],patients:[]};
+  if(!currentVisit.modules[mid].morbidCalc) currentVisit.modules[mid].morbidCalc={};
+  currentVisit.modules[mid].morbidCalc[field] = val;
+  dbPut('visits', currentVisit);
+
+  var mo = currentVisit.modules[mid].morbidCalc;
+  function norm(s){ return (s||'').trim().toLowerCase(); }
+
+  // Tally the register sample into a ranked top 10
+  var tally = {};
+  var sampled = 0;
+  for(var ri=1; ri<=20; ri++){
+    var dx = norm(mo['r'+ri+'_dx']);
+    if(!dx) continue;
+    sampled++;
+    tally[dx] = (tally[dx]||0) + 1;
+  }
+  var ranked = Object.keys(tally).map(function(k){ return {dx:k, count:tally[k]}; })
+    .sort(function(a,b){ return b.count-a.count; }).slice(0,10);
+
+  var top10El = document.getElementById('morb-top10');
+  if(top10El){
+    if(!ranked.length){
+      top10El.textContent = 'Enter diagnoses above to see the ranked top 10.';
+      top10El.style.color = 'var(--muted)';
+    } else {
+      top10El.innerHTML = '<strong>Top diagnoses from ' + sampled + ' sampled entries:</strong><br>'
+        + ranked.map(function(r,i){ return (i+1)+'. '+r.dx.charAt(0).toUpperCase()+r.dx.slice(1)+' <span style="color:var(--muted)">('+r.count+')</span>'; }).join(' &nbsp;·&nbsp; ');
+      top10El.style.color = 'var(--text)';
+    }
+  }
+
+  // Claims-side comparison, only if claims fields were actually filled in
+  var claimsDx = [];
+  for(var ci=1; ci<=10; ci++){
+    var cx = norm(mo['c'+ci+'_dx']);
+    if(cx) claimsDx.push(cx);
+  }
+
+  var sumEl = document.getElementById('morb-summary');
+  if(!sumEl) return;
+  if(!claimsDx.length){
+    sumEl.textContent = 'Register data captured — claims-side comparison pending desk review.';
+    sumEl.style.color = 'var(--muted)';
+    return;
+  }
+  if(!ranked.length){
+    sumEl.textContent = 'Enter register diagnoses above to compare against claims.';
+    sumEl.style.color = 'var(--muted)';
+    return;
+  }
+  // How many of the register's top diagnoses also appear on the claims list
+  var matched = ranked.filter(function(r){
+    return claimsDx.some(function(c){ return c===r.dx || c.indexOf(r.dx)!==-1 || r.dx.indexOf(c)!==-1; });
+  });
+  var pct = Math.round(matched.length/ranked.length*100);
+  var col = pct<50?'#e05050':pct<75?'var(--gold)':'#22c99a';
+  sumEl.innerHTML = '<strong>Concordance:</strong> <strong style="color:'+col+'">'+pct+'%</strong> of the register\'s top diagnoses also appear on the claims list ('+matched.length+' of '+ranked.length+')'
+    + (pct<50?' &nbsp;<span style="color:#e05050">⚠ LOW — disease pattern diverges from claims profile; flag for investigation</span>'
+      :pct<75?' &nbsp;<span style="color:var(--gold)">⚠ MODERATE — some divergence; review flagged diagnoses</span>'
+      :' &nbsp;<span style="color:#22c99a">✓ Consistent with claims profile</span>');
+  sumEl.style.color = 'var(--text)';
 }
 
 function setZoomCalc(field, val){
