@@ -3544,6 +3544,7 @@ function renderModuleContent(m){
       }
       html += '</select></div>';
     });
+    html += '<div id="m4-quality-summary">' + renderM4QualitySummary(d4.quality||{}) + '</div>';
     html += '</div>';
 
   }  // end if(m.id==='m4')
@@ -6261,6 +6262,52 @@ function refreshStaffCompliance(){
 // benchmark. ALOS and the OPD/IPD volumes are shown as plain numbers
 // with no color judgment, since a confident benchmark for those at
 // district-facility level isn't asserted here.
+// Derived at-a-glance summary for Quality Management & Knowledge
+// Assessment — averages the three 1–3 rated items, and separately
+// flags any single item rated "Poor" even if the average looks
+// acceptable (an average can mask one genuinely weak area — IPC
+// knowledge specifically being Poor matters on its own regardless of
+// how NHIS/ICT are rated).
+function renderM4QualitySummary(quality){
+  var scored = [
+    { key:'ipcKnowledge',  label:'IPC protocol knowledge' },
+    { key:'nhisKnowledge', label:'NHIS policy knowledge' },
+    { key:'ictPerformance',label:'NHIA ICT platform performance' },
+  ];
+  var vals = scored.map(function(s){ return { label:s.label, v: parseInt(quality[s.key]||'') }; })
+    .filter(function(x){ return !isNaN(x.v); });
+
+  var cards = '';
+
+  if(vals.length){
+    var avg = vals.reduce(function(a,b){ return a+b.v; },0) / vals.length;
+    var avgCol = avg>=2.5?'#22c99a':avg>=1.8?'var(--gold)':'#e05050';
+    var avgLabel = avg>=2.5?'Good overall':avg>=1.8?'Fair overall':'Poor overall — needs attention';
+    cards += '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:var(--text)">Knowledge &amp; Systems Score</span>'
+      + '<span style="font-size:16px;font-weight:700;color:'+avgCol+'">'+avg.toFixed(1)+' / 3</span></div>'
+      + '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+avgLabel+' ('+vals.length+' of '+scored.length+' rated)</div></div>';
+
+    var poor = vals.filter(function(x){ return x.v===1; });
+    if(poor.length){
+      cards += '<div style="background:rgba(224,80,80,.1);border:1px solid rgba(224,80,80,.35);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+        + '<div style="font-size:11px;font-weight:700;color:#e05050">⚠ Rated Poor: '+poor.map(function(p){return p.label;}).join(', ')+'</div>'
+        + '<div style="font-size:10px;color:var(--muted);margin-top:2px">Flag for targeted retraining regardless of the overall average above</div></div>';
+    }
+  }
+
+  var gaps = [];
+  if(quality.qmPolicy==='No') gaps.push('No Quality Management policy');
+  if(quality.patSatisfSurvey==='No') gaps.push('No patient satisfaction survey conducted');
+  if(gaps.length){
+    cards += '<div style="background:rgba(230,112,32,.1);border:1px solid rgba(230,112,32,.3);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      + '<div style="font-size:11px;font-weight:700;color:var(--amber)">⚠ Governance Gap: '+gaps.join(' · ')+'</div></div>';
+  }
+
+  if(!cards) return '<div style="font-size:11px;color:var(--muted);padding:8px 0">Answer the items above to see a summary here.</div>';
+  return '<div style="margin-top:10px">' + cards + '</div>';
+}
+
 function renderM4UtilSummary(util){
   var supDel = parseFloat(util.supDeliveries);
   var csec   = parseFloat(util.csections);
@@ -6320,6 +6367,10 @@ function setM4(category, field, val){
   if(category==='util'){
     var sumEl = document.getElementById('m4-util-summary');
     if(sumEl) sumEl.innerHTML = renderM4UtilSummary(currentVisit.modules['m4'].m4data.util||{});
+  }
+  if(category==='quality'){
+    var qSumEl = document.getElementById('m4-quality-summary');
+    if(qSumEl) qSumEl.innerHTML = renderM4QualitySummary(currentVisit.modules['m4'].m4data.quality||{});
   }
 }
 
