@@ -5182,7 +5182,11 @@ function buildTeamReportHtml(assignment, visits, doVisit){
     var vPType = v.setup&&v.setup.providerType||'';
     var mScores = MODULES.map(function(m){
       var s = calcModuleScore(m, modules[m.id], vPType);
-      return (modules[m.id]&&Object.keys(modules[m.id].responses||{}).length) ? s.score+'/'+s.max : 'N/A';
+      var hasData = modules[m.id] && (
+        Object.keys(modules[m.id].responses||{}).length ||
+        (m.id==='m7' && modules[m.id].patients && modules[m.id].patients.some(function(p){ return p && (p.serviceReceived || p.nhisStatus); }))
+      );
+      return hasData ? s.score+'/'+s.max : 'N/A';
     });
     var rating = pct>=80?'SATISFACTORY':pct>=60?'NEEDS IMPROVEMENT':'UNSATISFACTORY';
     var col    = pct>=80?'#1E8449':pct>=60?'#E09052':'#E05252';
@@ -5207,20 +5211,35 @@ function buildTeamReportHtml(assignment, visits, doVisit){
 
     var modSections = MODULES.map(function(m){
       var modData = modules[m.id];
-      if(!modData || !modData.responses || !Object.keys(modData.responses).length) return '';
+      var hasResponses = modData && modData.responses && Object.keys(modData.responses).length;
+      var hasPEIData = m.id==='m7' && modData && modData.patients && modData.patients.some(function(p){ return p && (p.serviceReceived || p.nhisStatus); });
+      if(!hasResponses && !hasPEIData) return '';
       var s = calcModuleScore(m, modData, vPType);
       var modPct = s.max ? Math.round(s.score/s.max*100) : 0;
       var modCol = modPct>=80?'#1E8449':modPct>=60?'#E09052':'#E05252';
 
-      // List non-Yes findings
-      var findings = m.indicators.filter(function(ind){
-        var r = modData.responses[ind.id];
-        return r && r !== 'Yes' && r !== 'N/A';
-      }).map(function(ind, idx){
-        var r   = modData.responses[ind.id];
-        var rmk = modData.remarks && modData.remarks[ind.id] ? ' — ' + modData.remarks[ind.id] : '';
-        return '<li style="margin-bottom:4px">' + ind.text + rmk + '</li>';
-      }).join('');
+      // List non-Yes findings. m.indicators alone breaks for any module
+      // that groups its indicators under .sections instead (M3, M4, M6)
+      // — falls back to flattening those the same way calcModuleScore
+      // already does elsewhere. M7 has neither shape (data lives in
+      // .patients), so it gets its own dedicated extraction.
+      var findings;
+      if(m.id === 'm7'){
+        findings = extractPEIFindings(modData).map(function(f){
+          var rmk = f.remark ? ' — ' + f.remark : '';
+          return '<li style="margin-bottom:4px">' + f.text + rmk + '</li>';
+        }).join('');
+      } else {
+        var allInds = m.indicators || (m.sections ? m.sections.flatMap(function(sec){ return sec.items; }) : []);
+        findings = allInds.filter(function(ind){
+          var r = modData.responses[ind.id];
+          return r && r !== 'Yes' && r !== 'N/A';
+        }).map(function(ind){
+          var r   = modData.responses[ind.id];
+          var rmk = modData.remarks && modData.remarks[ind.id] ? ' — ' + modData.remarks[ind.id] : '';
+          return '<li style="margin-bottom:4px">' + ind.text + rmk + '</li>';
+        }).join('');
+      }
 
       return '<div style="margin-bottom:12px">'
         + '<div style="display:flex;justify-content:space-between;align-items:center;background:#f0f0f0;padding:6px 10px;border-radius:4px;margin-bottom:6px">'
@@ -5284,7 +5303,7 @@ function buildTeamReportHtml(assignment, visits, doVisit){
     // Summary table
     + '<h3>Facility Visit Summary</h3>'
     + '<table style="margin-bottom:24px"><thead><tr>'
-    + '<th>Facility</th><th>Type</th><th>M1</th><th>M2</th><th>M3</th><th>M4</th><th>M5</th><th>M6</th><th>Overall</th><th>Rating</th>'
+    + '<th>Facility</th><th>Type</th><th>M1</th><th>M2</th><th>M3</th><th>M4</th><th>M5</th><th>M6</th><th>M7</th><th>Overall</th><th>Rating</th>'
     + '</tr></thead><tbody>' + summaryRows + '</tbody></table>'
 
     // Detailed findings
