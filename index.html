@@ -1510,7 +1510,7 @@ const MODULES = [
       {id:'4.7', text:'Emergency preparedness confirmed — first aid kits stocked and functional; referral system documented and operational', weight:7, section:'C. Emergency & Waste'},
       {id:'4.8', text:'Medical waste managed correctly — sharps containers present, colour-coded waste bins in use, biomedical waste disposal system functional', weight:8, section:'C. Emergency & Waste'},
       // D. Staffing
-      {id:'4.9', text:'Clinical staffing adequate — number and cadre (nurses, midwives, physician assistants) assessed relative to patient load; critical shortages documented', weight:9, section:'D. Staffing'},
+      {id:'4.9', text:'Clinical staffing adequate relative to patient load — computed from headcounts and Avg Daily OPD Attendance above; critical shortages documented', weight:9, section:'D. Staffing'},
       {id:'4.10', text:'Support and administrative staffing adequate — no operational gaps affecting service delivery', weight:6, section:'D. Staffing'},
       {id:'4.11', text:'All clinical staff hold valid professional licences from relevant regulatory body (MDC, NMC, PC); licences checked and current', weight:10, section:'D. Staffing'},
       {id:'4.12', text:'Staff attendance register maintained and up to date; no unexplained absences during visit', weight:5, section:'D. Staffing'},
@@ -2844,16 +2844,17 @@ function renderModuleContent(m){
       for(var mi=1; mi<=MORB_N; mi++){
         var dxKey = 'r'+mi+'_dx';
         var dxVal = mo[dxKey] || '';
-        moRows += '<input class="morb-calc-input" data-mokey="'+dxKey+'" type="text" placeholder="#'+mi+' diagnosis" value="'+dxVal+'"'
+        moRows += '<input class="morb-calc-input" list="opd-condition-list" data-mokey="'+dxKey+'" type="text" placeholder="#'+mi+' diagnosis" value="'+dxVal+'"'
           + ' style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;background:#fafbff;margin-bottom:6px;width:100%"/>';
       }
       var claimsRows = '';
       for(var ci=1; ci<=10; ci++){
         var cxKey = 'c'+ci+'_dx';
         var cxVal = mo[cxKey] || '';
-        claimsRows += '<input class="morb-calc-input" data-mokey="'+cxKey+'" type="text" placeholder="#'+ci+' claims diagnosis" value="'+cxVal+'"'
+        claimsRows += '<input class="morb-calc-input" list="opd-condition-list" data-mokey="'+cxKey+'" type="text" placeholder="#'+ci+' claims diagnosis" value="'+cxVal+'"'
           + ' style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px;background:#fafbff;margin-bottom:6px;width:100%"/>';
       }
+      base += opdConditionDatalistHtml();
       base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
         + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">📋 Top Morbidity — Register Sample</div>'
         + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">Sample at least 20 register entries and enter each diagnosis (short-hand is fine — e.g. "malaria", "URTI"). The app tallies these into a ranked top-10 automatically.</div>'
@@ -3387,6 +3388,10 @@ function renderModuleContent(m){
             + '<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Staffing Compliance Summary</div>'
             + '<div id="staff-compliance-text" style="font-size:13px;font-weight:600;color:var(--muted)">Enter headcounts above to see compliance status.</div>'
             + '</div>';
+      html += '<div id="staff-load-summary" style="margin-top:8px;padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">'
+            + '<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Staffing vs. Patient Load (Indicator 4.9)</div>'
+            + '<div id="staff-load-text" style="font-size:13px;font-weight:600;color:var(--muted)">' + renderStaffLoadText(d4) + '</div>'
+            + '</div>';
     }
     html += '</div>';
 
@@ -3452,15 +3457,16 @@ function renderModuleContent(m){
 
     // Top 10 OPD Diagnoses — always shown
     html += '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.07em;text-transform:uppercase;margin:10px 0 6px">Top 10 OPD Diagnoses / Conditions</div>'
-          + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Ranked by frequency — last month</div>';
+          + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Ranked by frequency — last month. Pick from the list or type your own.</div>'
+          + opdConditionDatalistHtml();
     for(var r=1; r<=10; r++){
       var opdKey = 'opd' + r;
       var opdVal = (d4.util && d4.util[opdKey]) ? d4.util[opdKey] : '';
       html += '<div class="m4-staff-row">'
             + '<div style="width:22px;font-size:11px;font-weight:700;color:var(--gold);flex-shrink:0">' + r + '.</div>'
-            + '<input type="text"'
+            + '<input type="text" list="opd-condition-list"'
             + ' style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px;outline:none"'
-            + ' placeholder="Diagnosis / condition"'
+            + ' placeholder="Diagnosis / condition — pick from list or type your own"'
             + ' value="' + opdVal + '"'
             + ' onchange="setM4(\'util\',\'' + opdKey + '\',this.value)"/>'
             + '</div>';
@@ -3470,15 +3476,15 @@ function renderModuleContent(m){
     var hasIPD = (d4.services && (d4.services.generalIPD === 'Available' || d4.services.specialistIPD === 'Available'));
     if(hasIPD){
       html += '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.07em;text-transform:uppercase;margin:14px 0 6px">Top 5 IPD Diagnoses / Conditions</div>'
-            + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Ranked by frequency — last month</div>';
+            + '<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Ranked by frequency — last month. Pick from the list or type your own.</div>';
       for(var r=1; r<=5; r++){
         var ipdKey = 'ipd' + r;
         var ipdVal = (d4.util && d4.util[ipdKey]) ? d4.util[ipdKey] : '';
         html += '<div class="m4-staff-row">'
               + '<div style="width:22px;font-size:11px;font-weight:700;color:var(--accent2);flex-shrink:0">' + r + '.</div>'
-              + '<input type="text"'
+              + '<input type="text" list="opd-condition-list"'
               + ' style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:6px;padding:7px 10px;color:var(--text);font-size:13px;outline:none"'
-              + ' placeholder="Diagnosis / condition"'
+              + ' placeholder="Diagnosis / condition — pick from list or type your own"'
               + ' value="' + ipdVal + '"'
               + ' onchange="setM4(\'util\',\'' + ipdKey + '\',this.value)"/>'
               + '</div>';
@@ -6171,6 +6177,41 @@ function refreshPEISummary(moduleId){
   }
 }
 
+// Indicator 4.9 specifically asks whether staffing is adequate
+// *relative to patient load* — a facility can meet the bare GHS
+// minimum norm above and still be genuinely stretched if OPD volume
+// is unusually high, or vice versa. Reuses staffing headcounts
+// already entered above and Avg Daily OPD Attendance already entered
+// in the Utilisation section, rather than asking for either again.
+// The ~20–25 patients/clinical-staff/day figure is a commonly cited
+// rough workload guide from health workforce planning literature, not
+// an official NHIA/GHS threshold — shown as a guide for the officer's
+// own judgement, not a pass/fail rule like the C-section rate above.
+function renderStaffLoadText(d4){
+  var CLINICAL_KEYS = ['cho','pa','nurse','midwife','mo'];
+  var staffing = d4.staffing || {};
+  var totalClinical = 0, anyEntered = false;
+  CLINICAL_KEYS.forEach(function(k){
+    var v = parseInt(staffing[k]);
+    if(!isNaN(v)){ totalClinical += v; anyEntered = true; }
+  });
+  var dailyOPD = parseFloat(d4.util && d4.util.dailyOPD);
+
+  if(!anyEntered || totalClinical===0){
+    return 'Enter clinical staffing headcounts above to compute patient load per staff.';
+  }
+  if(isNaN(dailyOPD)){
+    return totalClinical + ' clinical staff on duty (CHO/PA/Nurse/Midwife/MO). Enter Avg Daily OPD Attendance in Utilisation &amp; Outcome Data below to compute the ratio.';
+  }
+  var ratio = dailyOPD / totalClinical;
+  var col = ratio>25?'var(--red)':ratio>15?'var(--gold)':'var(--accent2)';
+  var note = ratio>25?'⚠ High — patient volume may be straining available clinical staff'
+    : ratio>15?'Moderate — worth noting if this is a consistent pattern, not just a busy day'
+    : '✓ Comfortable relative to a rough 20–25/staff/day workload guide';
+  return '<span style="color:'+col+'">'+ratio.toFixed(1)+' OPD patients per clinical staff member/day</span> ('+totalClinical+' clinical staff, '+dailyOPD+' avg daily OPD)<br>'
+    + '<span style="font-size:11px;font-weight:400;color:var(--muted)">'+note+' — informal guide, not an official NHIA/GHS threshold</span>';
+}
+
 function setM4Staff(key, val, min, required){
   // Save to data store
   if(!currentVisit.modules['m4']) currentVisit.modules['m4']={responses:{},remarks:{},m4data:{}};
@@ -6211,6 +6252,7 @@ function setM4Staff(key, val, min, required){
 
   // Recompute overall compliance summary
   refreshStaffCompliance();
+  refreshStaffLoadSummary();
 }
 
 function refreshStaffCompliance(){
@@ -6268,6 +6310,23 @@ function refreshStaffCompliance(){
 // acceptable (an average can mask one genuinely weak area — IPC
 // knowledge specifically being Poor matters on its own regardless of
 // how NHIS/ICT are rated).
+// Shared condition/diagnosis suggestion list — used by both the Top
+// OPD/IPD Diagnoses fields (M4) and the Top Morbidity Comparison
+// calculator (M3), so it's maintained in exactly one place. Always
+// paired with plain <input list="opd-condition-list"> text fields —
+// picking a suggestion or typing something else both work.
+function opdConditionDatalistHtml(){
+  var conditions = ['Malaria','Upper Respiratory Tract Infection (URTI)','Hypertension','Diarrhoea Diseases',
+    'Skin Diseases & Ulcers','Rheumatism & Other Joint Pains','Anaemia','Pneumonia',
+    'Typhoid Fever (Enteric Fever)','Intestinal Worms (Helminthiasis)','Diabetes Mellitus',
+    'Urinary Tract Infection (UTI)','Peptic Ulcer Disease','Home & Road Traffic Injuries',
+    'Eye Infections / Conjunctivitis','Ear Infections / Otitis Media','Dental Caries / Oral Conditions',
+    'Pregnancy-Related Complications','Malnutrition','Asthma','Gynaecological Conditions (e.g. PID)',
+    'Sexually Transmitted Infections (STIs)','HIV/AIDS-Related Conditions','Tuberculosis (TB)',
+    'Bronchitis','Gastroenteritis','Hepatitis','Measles','Chicken Pox','Acute Febrile Illness'];
+  return '<datalist id="opd-condition-list">' + conditions.map(function(c){ return '<option value="'+c+'">'; }).join('') + '</datalist>';
+}
+
 function renderM4QualitySummary(quality){
   var scored = [
     { key:'ipcKnowledge',  label:'IPC protocol knowledge' },
@@ -6358,6 +6417,13 @@ function renderM4UtilSummary(util){
   return '<div style="margin-top:4px;margin-bottom:10px">' + cards + '</div>';
 }
 
+function refreshStaffLoadSummary(){
+  var el = document.getElementById('staff-load-text');
+  if(!el) return;
+  var d4 = (currentVisit.modules&&currentVisit.modules.m4&&currentVisit.modules.m4.m4data) || {};
+  el.innerHTML = renderStaffLoadText(d4);
+}
+
 function setM4(category, field, val){
   if(!currentVisit.modules['m4']) currentVisit.modules['m4']={responses:{},remarks:{},m4data:{}};
   if(!currentVisit.modules['m4'].m4data) currentVisit.modules['m4'].m4data={};
@@ -6367,6 +6433,7 @@ function setM4(category, field, val){
   if(category==='util'){
     var sumEl = document.getElementById('m4-util-summary');
     if(sumEl) sumEl.innerHTML = renderM4UtilSummary(currentVisit.modules['m4'].m4data.util||{});
+    if(field==='dailyOPD') refreshStaffLoadSummary();
   }
   if(category==='quality'){
     var qSumEl = document.getElementById('m4-quality-summary');
