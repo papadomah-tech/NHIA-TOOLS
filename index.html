@@ -1465,7 +1465,7 @@ const MODULES = [
   // Source: Wappy1 — Clinical & Service Delivery Monitoring section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m3', num:'03', title:'Clinical & Service Delivery', color:'#2E86C1', maxScore:104,
+    id:'m3', num:'03', title:'Clinical & Service Delivery', color:'#2E86C1', maxScore:94,
     sections:[
       {title:'A. Clinical Practice & Rational Drug Use', items:[
         {id:'3.1', text:'Prescription rate assessed by sampling patient encounters (OPD register/folders) and counting medicines prescribed per encounter — compared against NHIS guidelines; polypharmacy cases flagged and investigated', weight:9, hasPrescriptionCalc:true, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
@@ -1484,7 +1484,6 @@ const MODULES = [
         {id:'3.9', text:'Patient folders (5–10 sampled) reviewed — diagnosis, treatment, and prescribed medicines align with claims submitted; inconsistencies flagged', weight:10, levels:['CHPS Compound','Health Centre','Private Clinic','Public Polyclinic','Public Hospital','Private Hospital']},
       ]},
       {title:'D. Patient Experience & Rights', items:[
-        {id:'3.10', text:'NHIS members not asked for out-of-pocket payments for covered services (verified by patient interviews and observation)', weight:10},
         {id:'3.13', text:'Informed consent process in place and explained to patients before procedures', weight:5},
         {id:'3.14', text:'Patients directed to appropriate services without unnecessary delays or referrals that compromise care', weight:5},
       ]},
@@ -3449,6 +3448,7 @@ function renderModuleContent(m){
             + '</div>';
     });
     html += '</div>';
+    html += '<div id="m4-util-summary">' + renderM4UtilSummary(d4.util||{}) + '</div>';
 
     // Top 10 OPD Diagnoses — always shown
     html += '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.07em;text-transform:uppercase;margin:10px 0 6px">Top 10 OPD Diagnoses / Conditions</div>'
@@ -6256,12 +6256,71 @@ function refreshStaffCompliance(){
   }
 }
 
+// Derived at-a-glance indicators for the Utilisation & Outcome Data
+// section — only for the figures that have a defensible, citable
+// benchmark. ALOS and the OPD/IPD volumes are shown as plain numbers
+// with no color judgment, since a confident benchmark for those at
+// district-facility level isn't asserted here.
+function renderM4UtilSummary(util){
+  var supDel = parseFloat(util.supDeliveries);
+  var csec   = parseFloat(util.csections);
+  var still  = parseFloat(util.stillbirths);
+  var neo    = parseFloat(util.neonatalDeaths);
+  var mat    = parseFloat(util.maternalDeaths);
+
+  var cards = '';
+
+  // C-Section Rate — WHO: population-level rates of 10–15% are
+  // associated with the best outcomes; below suggests limited access,
+  // above suggests possible overuse.
+  if(!isNaN(supDel) && supDel>0 && !isNaN(csec)){
+    var csRate = (csec/supDel*100);
+    var csCol = csRate<10?'var(--gold)':csRate<=15?'#22c99a':'var(--gold)';
+    var csNote = csRate<10?'Below WHO 10–15% range — possible limited access to emergency obstetric care'
+               : csRate<=15?'Within WHO-associated optimal range (10–15%)'
+               : 'Above WHO 10–15% range — review indications for possible overuse';
+    cards += '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:var(--text)">C-Section Rate</span>'
+      + '<span style="font-size:16px;font-weight:700;color:'+csCol+'">'+csRate.toFixed(1)+'%</span></div>'
+      + '<div style="font-size:10px;color:var(--muted);margin-top:2px">'+csNote+'</div></div>';
+  }
+
+  // Stillbirth Rate per 1000 total births
+  if(!isNaN(supDel) && !isNaN(still) && (supDel+still)>0){
+    var sbRate = (still/(supDel+still)*1000);
+    cards += '<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      + '<div style="display:flex;justify-content:space-between;align-items:center"><span style="font-size:11px;font-weight:700;color:var(--text)">Stillbirth Rate</span>'
+      + '<span style="font-size:16px;font-weight:700;color:var(--text)">'+sbRate.toFixed(1)+' / 1000 births</span></div></div>';
+  }
+
+  // Maternal death — sentinel event, any value >0 is critical
+  if(!isNaN(mat) && mat>0){
+    cards += '<div style="background:rgba(224,80,80,.1);border:1px solid rgba(224,80,80,.35);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      + '<div style="font-size:11px;font-weight:700;color:#e05050">⚠ '+mat+' Maternal Death(s) Reported</div>'
+      + '<div style="font-size:10px;color:var(--muted);margin-top:2px">Sentinel event — verify Maternal Death Surveillance & Response (MDSR) reporting was completed for each case</div></div>';
+  }
+
+  // Neonatal deaths — flagged for review, less absolute than maternal
+  if(!isNaN(neo) && neo>0){
+    cards += '<div style="background:rgba(230,112,32,.1);border:1px solid rgba(230,112,32,.3);border-radius:8px;padding:10px 12px;margin-bottom:6px">'
+      + '<div style="font-size:11px;font-weight:700;color:var(--amber)">⚠ '+neo+' Neonatal Death(s) Reported</div>'
+      + '<div style="font-size:10px;color:var(--muted);margin-top:2px">Review case notes and confirm reporting through routine channels</div></div>';
+  }
+
+  if(!cards) return '<div style="font-size:11px;color:var(--muted);padding:8px 0">Enter deliveries, C-sections, and outcome figures above to see derived rates here.</div>';
+  return '<div style="margin-top:4px;margin-bottom:10px">' + cards + '</div>';
+}
+
 function setM4(category, field, val){
   if(!currentVisit.modules['m4']) currentVisit.modules['m4']={responses:{},remarks:{},m4data:{}};
   if(!currentVisit.modules['m4'].m4data) currentVisit.modules['m4'].m4data={};
   if(!currentVisit.modules['m4'].m4data[category]) currentVisit.modules['m4'].m4data[category]={};
   currentVisit.modules['m4'].m4data[category][field]=val;
   dbPut('visits',currentVisit);
+  if(category==='util'){
+    var sumEl = document.getElementById('m4-util-summary');
+    if(sumEl) sumEl.innerHTML = renderM4UtilSummary(currentVisit.modules['m4'].m4data.util||{});
+  }
 }
 
 // ══ INIT ═══════════════════════════════════════════════════════════════════
