@@ -3339,8 +3339,33 @@ function renderModuleContent(m){
     };
 
     const norm    = STAFFING_NORMS[providerType] || null;
-    const cadres  = norm ? norm.cadres : [];
+    const cadres  = norm ? norm.cadres.map(function(c){ return Object.assign({}, c); }) : [];
     const normLabel = norm ? norm.label : (providerType || 'Unknown provider type');
+
+    // CHPS Compound only — whether this facility is specifically
+    // designated "CHPS-with-Midwife" isn't captured anywhere else, so
+    // the Midwife row's "required if..." note could never actually be
+    // checked. This makes that designation a real answerable field,
+    // and once set to Yes, the Midwife row becomes a genuine flaggable
+    // requirement (red border if blank/zero) instead of a passive note.
+    var chpsMidwifeDesignation = '';
+    if(providerType === 'CHPS Compound'){
+      chpsMidwifeDesignation = d4.chpsWithMidwife || '';
+      html += '<div class="m4-section" style="margin-top:20px;margin-bottom:0">'
+        + '<div class="field"><label>Is this facility designated CHPS-with-Midwife? *</label>'
+        + '<select onchange="setChpsMidwifeDesignation(this.value)">'
+        + '<option value="" ' + (!chpsMidwifeDesignation?'selected':'') + '>Select…</option>'
+        + '<option value="Yes" ' + (chpsMidwifeDesignation==='Yes'?'selected':'') + '>Yes</option>'
+        + '<option value="No" ' + (chpsMidwifeDesignation==='No'?'selected':'') + '>No</option>'
+        + '</select></div></div>';
+      if(chpsMidwifeDesignation === 'Yes'){
+        var mwCadre = cadres.find(function(c){ return c.key==='midwife'; });
+        if(mwCadre){ mwCadre.min = 1; mwCadre.required = true; mwCadre.note = 'Required — this facility is designated CHPS-with-Midwife'; }
+      } else if(chpsMidwifeDesignation === 'No'){
+        var mwCadre2 = cadres.find(function(c){ return c.key==='midwife'; });
+        if(mwCadre2){ mwCadre2.note = 'Not required — facility is not designated CHPS-with-Midwife'; }
+      }
+    }
 
     html += '<div class="m4-section" style="margin-top:20px">'
           + '<h4>Staffing Headcount — ' + normLabel + '</h4>'
@@ -3396,7 +3421,32 @@ function renderModuleContent(m){
     html += '</div>';
 
     // Service availability
-    html += '<div class="m4-section"><h4>Service Availability (at time of visit)</h4>';
+    // Which services are reasonably EXPECTED at each facility level in
+    // Ghana's tiered system — built from general knowledge of GHS
+    // facility tiers (CHPS → Health Centre → Polyclinic → Hospital),
+    // not an official NHIA/GHS accreditation checklist. Worth checking
+    // against your actual facility-level service standards before
+    // relying on the flags below.
+    const SERVICE_NORMS = {
+      'CHPS Compound':     ['consultGeneral','pharmacy'],
+      'Health Centre':     ['consultGeneral','labHaem','pharmacy','maternity'],
+      'Private Clinic':    ['consultGeneral','pharmacy'],
+      'Public Polyclinic': ['consultGeneral','consultSpecialist','labHaem','labBiochem','radiology','pharmacy'],
+      'Public Hospital':   ['consultGeneral','consultSpecialist','labHaem','labBiochem','labBacteri','radiology','ultrasound','ecg','bloodBank','pharmacy','generalIPD','maternity'],
+      'Private Hospital':  ['consultGeneral','consultSpecialist','labHaem','labBiochem','labBacteri','radiology','ultrasound','ecg','bloodBank','pharmacy','generalIPD','maternity'],
+      'Pharmacy':          ['pharmacy'],
+      'Chemical Shop':     ['pharmacy'],
+      'Diagnostic/Lab Centre': ['labHaem','labBiochem','labBacteri','radiology','ultrasound','ecg'],
+    };
+    const expectedServices = SERVICE_NORMS[providerType] || [];
+    const NARROW_SCOPE_TYPES = ['Pharmacy','Chemical Shop','Diagnostic/Lab Centre'];
+
+    html += '<div class="m4-section"><h4>Service Availability (at time of visit)</h4>'
+          + '<div style="font-size:11px;color:var(--muted);margin-bottom:12px;line-height:1.6">'
+          + 'Services checked against what\'s reasonably expected for ' + (providerType||'this facility level') + '. '
+          + '<span style="color:var(--red)">Red</span> = expected service marked Unavailable.'
+          + (NARROW_SCOPE_TYPES.indexOf(providerType)!==-1 ? ' <span style="color:var(--amber)">Amber</span> = marked Available but outside this facility\'s registered scope.' : '')
+          + '</div>';
     var services = [
       ['consultGeneral','Consultation — General / OPD'],
       ['consultSpecialist','Consultation — Specialist'],
@@ -3414,12 +3464,23 @@ function renderModuleContent(m){
       ['specialistIPD','Specialist In-Patient Care'],
       ['maternity','Maternity / Delivery Services'],
     ];
+    var isNarrowScope = NARROW_SCOPE_TYPES.indexOf(providerType) !== -1;
     services.forEach(function(svc){
       var skey = svc[0], slabel = svc[1];
       var sval = (d4.services && d4.services[skey]) ? d4.services[skey] : '';
-      html += '<div class="m4-svc-row">'
-            + '<div class="m4-svc-label">' + slabel + '</div>'
-            + '<select class="m4-svc-select" onchange="setM4(\'services\',\'' + skey + '\',this.value)">'
+      var isExpected = expectedServices.indexOf(skey) !== -1;
+      var flagged = isExpected && sval === 'Unavailable';
+      var outOfScope = isNarrowScope && !isExpected && sval === 'Available';
+      var expBadge = isExpected
+        ? '<span style="font-size:10px;background:rgba(212,172,13,.15);color:var(--gold);border-radius:6px;padding:2px 7px;font-weight:600;flex-shrink:0;margin-right:6px">expected</span>'
+        : '';
+      var rowFlagStyle = flagged ? 'background:rgba(224,80,80,.06);border-radius:6px;padding:6px 8px;' : outOfScope ? 'background:rgba(230,112,32,.08);border-radius:6px;padding:6px 8px;' : '';
+      var labelFlag = flagged ? ' <span style="color:var(--red);font-size:11px;font-weight:600">— Expected but unavailable</span>'
+        : outOfScope ? ' <span style="color:var(--amber);font-size:11px;font-weight:600">— Outside registered scope</span>' : '';
+      html += '<div class="m4-svc-row" id="svc-row-' + skey + '" style="' + rowFlagStyle + '">'
+            + '<div class="m4-svc-label">' + slabel + labelFlag + '</div>'
+            + expBadge
+            + '<select class="m4-svc-select" id="svc-select-' + skey + '" style="' + (flagged?'border-color:var(--red);':outOfScope?'border-color:var(--amber);':'') + '" onchange="setM4Service(\'' + skey + '\',this.value,' + isExpected + ',' + isNarrowScope + ')">'
             + '<option value=""'  + (!sval ? ' selected' : '') + '>—</option>'
             + '<option value="Available"'   + (sval==='Available'   ? ' selected' : '') + '>Available</option>'
             + '<option value="Unavailable"' + (sval==='Unavailable' ? ' selected' : '') + '>Not Available</option>'
@@ -3427,6 +3488,10 @@ function renderModuleContent(m){
             + '</select>'
             + '</div>';
     });
+    html += '<div id="svc-compliance-summary" style="margin-top:12px;padding:10px 14px;border-radius:8px;background:var(--surface);border:1px solid var(--border)">'
+          + '<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:4px">Service Availability Summary</div>'
+          + '<div id="svc-compliance-text" style="font-size:13px;font-weight:600;color:var(--muted)">' + renderSvcComplianceText(d4.services||{}, expectedServices, services, isNarrowScope) + '</div>'
+          + '</div>';
     html += '</div>';
 
     // Utilisation data
@@ -6212,6 +6277,18 @@ function renderStaffLoadText(d4){
     + '<span style="font-size:11px;font-weight:400;color:var(--muted)">'+note+' — informal guide, not an official NHIA/GHS threshold</span>';
 }
 
+// CHPS Compound only — records whether this facility is designated
+// CHPS-with-Midwife, and re-renders so the Midwife row's min/required
+// status (and its red-border flagging) updates immediately to match.
+function setChpsMidwifeDesignation(val){
+  if(!currentVisit.modules['m4']) currentVisit.modules['m4']={responses:{},remarks:{},m4data:{}};
+  if(!currentVisit.modules['m4'].m4data) currentVisit.modules['m4'].m4data={};
+  currentVisit.modules['m4'].m4data.chpsWithMidwife = val;
+  dbPut('visits',currentVisit);
+  var m4 = MODULES.find(function(x){ return x.id==='m4'; });
+  if(m4) renderModuleContent(m4);
+}
+
 function setM4Staff(key, val, min, required){
   // Save to data store
   if(!currentVisit.modules['m4']) currentVisit.modules['m4']={responses:{},remarks:{},m4data:{}};
@@ -6253,6 +6330,89 @@ function setM4Staff(key, val, min, required){
   // Recompute overall compliance summary
   refreshStaffCompliance();
   refreshStaffLoadSummary();
+}
+
+// Builds the Service Availability Summary text — how many of the
+// facility-type-expected services are actually marked Unavailable.
+function renderSvcComplianceText(services, expectedServices, servicesList, isNarrowScope){
+  var labelByKey = {};
+  servicesList.forEach(function(s){ labelByKey[s[0]] = s[1]; });
+
+  var outOfScope = isNarrowScope
+    ? servicesList.filter(function(s){ return expectedServices.indexOf(s[0])===-1 && services[s[0]]==='Available'; }).map(function(s){ return s[1]; })
+    : [];
+  var scopeLine = outOfScope.length
+    ? '<div style="margin-top:4px"><span style="color:var(--amber)">⚠ Outside registered scope:</span> ' + outOfScope.join(', ') + '</div>'
+    : '';
+
+  if(!expectedServices.length){
+    return (isNarrowScope ? '' : 'No service expectations defined for this facility type.') + scopeLine;
+  }
+  var answered = expectedServices.filter(function(k){ return services[k]; });
+  var missing  = expectedServices.filter(function(k){ return services[k] === 'Unavailable'; });
+  if(answered.length === 0){
+    return 'Mark service availability above to see a summary here.' + scopeLine;
+  }
+  var pct = Math.round((expectedServices.length - missing.length) / expectedServices.length * 100);
+  if(missing.length === 0){
+    return '✅ All ' + expectedServices.length + ' expected service(s) accounted for — <strong style="color:var(--accent2)">' + pct + '% available</strong>' + scopeLine;
+  }
+  return '⚠ <strong style="color:var(--red)">' + missing.length + ' of ' + expectedServices.length + ' expected service(s) unavailable</strong> — '
+    + pct + '% available. Missing: ' + missing.map(function(k){ return labelByKey[k]||k; }).join(', ') + scopeLine;
+}
+
+// Live update when a service's availability changes — mirrors
+// setM4Staff's row-level flagging and summary refresh.
+function setM4Service(key, val, isExpected, isNarrowScope){
+  if(!currentVisit.modules['m4']) currentVisit.modules['m4']={responses:{},remarks:{},m4data:{}};
+  if(!currentVisit.modules['m4'].m4data) currentVisit.modules['m4'].m4data={};
+  if(!currentVisit.modules['m4'].m4data.services) currentVisit.modules['m4'].m4data.services={};
+  currentVisit.modules['m4'].m4data.services[key] = val;
+  dbPut('visits', currentVisit);
+
+  var flagged = isExpected && val === 'Unavailable';
+  var outOfScope = isNarrowScope && !isExpected && val === 'Available';
+  var row = document.getElementById('svc-row-' + key);
+  var select = document.getElementById('svc-select-' + key);
+  if(row){
+    row.style.background = flagged ? 'rgba(224,80,80,.06)' : outOfScope ? 'rgba(230,112,32,.08)' : '';
+    row.style.borderRadius = (flagged||outOfScope) ? '6px' : '';
+    row.style.padding = (flagged||outOfScope) ? '6px 8px' : '';
+  }
+  if(select) select.style.borderColor = flagged ? 'var(--red)' : outOfScope ? 'var(--amber)' : '';
+  var labelDiv = row && row.querySelector('.m4-svc-label');
+  if(labelDiv){
+    var baseLabel = labelDiv.textContent.replace(/\s*—\s*(Expected but unavailable|Outside registered scope)\s*$/,'');
+    var flagHtml = flagged ? ' <span style="color:var(--red);font-size:11px;font-weight:600">— Expected but unavailable</span>'
+      : outOfScope ? ' <span style="color:var(--amber);font-size:11px;font-weight:600">— Outside registered scope</span>' : '';
+    labelDiv.innerHTML = baseLabel + flagHtml;
+  }
+
+  var sumEl = document.getElementById('svc-compliance-text');
+  if(sumEl){
+    var providerType = (currentVisit.setup && currentVisit.setup.providerType) || '';
+    var SERVICE_NORMS = {
+      'CHPS Compound':     ['consultGeneral','pharmacy'],
+      'Health Centre':     ['consultGeneral','labHaem','pharmacy','maternity'],
+      'Private Clinic':    ['consultGeneral','pharmacy'],
+      'Public Polyclinic': ['consultGeneral','consultSpecialist','labHaem','labBiochem','radiology','pharmacy'],
+      'Public Hospital':   ['consultGeneral','consultSpecialist','labHaem','labBiochem','labBacteri','radiology','ultrasound','ecg','bloodBank','pharmacy','generalIPD','maternity'],
+      'Private Hospital':  ['consultGeneral','consultSpecialist','labHaem','labBiochem','labBacteri','radiology','ultrasound','ecg','bloodBank','pharmacy','generalIPD','maternity'],
+      'Pharmacy':          ['pharmacy'],
+      'Chemical Shop':     ['pharmacy'],
+      'Diagnostic/Lab Centre': ['labHaem','labBiochem','labBacteri','radiology','ultrasound','ecg'],
+    };
+    var servicesList = [
+      ['consultGeneral','Consultation — General / OPD'],['consultSpecialist','Consultation — Specialist'],
+      ['labHaem','Laboratory — Haematology'],['labBiochem','Laboratory — Biochemistry'],
+      ['labBacteri','Laboratory — Bacteriology'],['labVirology','Laboratory — Virology'],
+      ['radiology','Diagnostic Radiology / X-Ray'],['ultrasound','Ultrasound Scan'],['ctScan','CT Scan'],
+      ['ecg','ECG'],['bloodBank','Blood Bank'],['pharmacy','Pharmaceutical Services'],
+      ['generalIPD','General In-Patient Care'],['specialistIPD','Specialist In-Patient Care'],
+      ['maternity','Maternity / Delivery Services'],
+    ];
+    sumEl.innerHTML = renderSvcComplianceText(currentVisit.modules['m4'].m4data.services||{}, SERVICE_NORMS[providerType]||[], servicesList, ['Pharmacy','Chemical Shop','Diagnostic/Lab Centre'].indexOf(providerType)!==-1);
+  }
 }
 
 function refreshStaffCompliance(){
