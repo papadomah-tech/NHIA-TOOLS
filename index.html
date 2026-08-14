@@ -2629,6 +2629,9 @@ function calcPEIScore(data){
       items.push({ ok: p.dischargeWithheld==='No', weight:10 });
       items.push({ ok: p.wardFeesCharged==='No', weight:8 });
     }
+    if(setting==='FPHC'){
+      items.push({ ok: p.informedFree==='Yes'||p.informedFree==='Already knew', weight:9 });
+    }
     items.forEach(function(it){ totalMax+=it.weight; if(it.ok) totalScore+=it.weight; });
   });
   return {score:Math.round(totalScore), max:totalMax, pct: totalMax?Math.round(totalScore/totalMax*100):0};
@@ -2691,22 +2694,6 @@ function renderModuleContent(m){
   // Eligibility note for M6
   if(m.chpsOnly){
     html+=`<div class="completion-banner"><div class="completion-icon">ℹ️</div><div class="completion-text"><h3>CHPS / Health Centres Only</h3><p>Mark all indicators N/A if this facility is not a CHPS Compound or Health Centre.</p></div></div>`;
-  }
-
-  // Module 7 only — OPD/IPD setting selector. Determines which
-  // section D (Admission, Ward & Discharge) indicators apply; those
-  // are excluded from scoring entirely when OPD is selected.
-  if(m.hasSettingSelector){
-    var curSetting = data.setting || '';
-    html += '<div class="card" style="margin-bottom:14px">'
-      + '<div class="field"><label>Patient Service Setting *</label>'
-      + '<select onchange="setModuleSetting(\'' + m.id + '\',this.value)">'
-      + '<option value="" ' + (!curSetting?'selected':'') + '>Select OPD or IPD…</option>'
-      + '<option value="OPD" ' + (curSetting==='OPD'?'selected':'') + '>OPD — Outpatient</option>'
-      + '<option value="IPD" ' + (curSetting==='IPD'?'selected':'') + '>IPD — Inpatient (Admitted)</option>'
-      + '</select></div>'
-      + (!curSetting ? '<div style="font-size:11px;color:var(--amber);margin-top:6px">⚠ Select a setting first — Section D only applies to IPD.</div>' : '')
-      + '</div>';
   }
 
   // Render indicators
@@ -3008,19 +2995,28 @@ function renderModuleContent(m){
     const showFPHC   = m.id==='m5';
     const feeContext = m.id==='m5' ? 'FPHC' : 'NHIS';
 
-    // Module 7 only — OPD/IPD selector, shown before the interview
-    // itself. Section D (Admission, Ward & Discharge) below only
-    // appears, and only counts toward the score, once IPD is chosen.
+    // Module 7 only — OPD/IPD/FPHC selector, shown before the
+    // interview itself. Section D (Admission, Ward & Discharge) below
+    // only appears, and only counts toward the score, once IPD is
+    // chosen. FPHC reveals its own fee-exemption question, restored
+    // from the old Module 6 interview.
     if(m.hasSettingSelector){
       var curSetting = data.setting || '';
+      // FPHC is only offered as a setting for the same facility types
+      // Module 6 (FPHC Compliance) itself applies to — a Public
+      // Hospital, for instance, isn't an FPHC facility, so the option
+      // shouldn't be selectable there at all.
+      var fphcEligible = ['CHPS Compound','Health Centre','Private Clinic'].indexOf((currentVisit.setup&&currentVisit.setup.providerType)||'') !== -1;
       html += '<div class="card" style="margin-bottom:14px">'
         + '<div class="field"><label>Patient Service Setting *</label>'
         + '<select onchange="setModuleSetting(\'' + m.id + '\',this.value)">'
-        + '<option value="" ' + (!curSetting?'selected':'') + '>Select OPD or IPD…</option>'
+        + '<option value="" ' + (!curSetting?'selected':'') + '>Select ' + (fphcEligible?'OPD, IPD, or FPHC':'OPD or IPD') + '…</option>'
         + '<option value="OPD" ' + (curSetting==='OPD'?'selected':'') + '>OPD — Outpatient</option>'
         + '<option value="IPD" ' + (curSetting==='IPD'?'selected':'') + '>IPD — Inpatient (Admitted)</option>'
+        + (fphcEligible ? '<option value="FPHC" ' + (curSetting==='FPHC'?'selected':'') + '>FPHC — Free Primary Health Care</option>' : '')
         + '</select></div>'
-        + (!curSetting ? '<div style="font-size:11px;color:var(--amber);margin-top:6px">⚠ Select a setting first — Admission/Ward/Discharge questions only apply to IPD.</div>' : '')
+        + (!fphcEligible ? '<div style="font-size:11px;color:var(--muted);margin-top:6px">FPHC setting not offered — not an FPHC-eligible facility type.</div>' : '')
+        + (!curSetting ? '<div style="font-size:11px;color:var(--amber);margin-top:6px">⚠ Select a setting first — Admission/Ward/Discharge questions only apply to IPD' + (fphcEligible?'; the fee-exemption question only applies to FPHC.':'.') + '</div>' : '')
         + '</div>';
     }
 
@@ -3253,6 +3249,19 @@ function renderModuleContent(m){
                 <option value="" ${!p.wardFeesCharged?'selected':''}>—</option>
                 <option value="No" ${p.wardFeesCharged==='No'?'selected':''}>No</option>
                 <option value="Yes" ${p.wardFeesCharged==='Yes'?'selected':''}>Yes</option>
+              </select></div>
+          </div>`:''}
+
+          ${(m.id==='m7' && data.setting==='FPHC')?`
+          <!-- D3: FPHC — Fee Exemption -->
+          <div class="pei-section">D3 — FPHC Fee Exemption</div>
+          <div class="pei-grid-2">
+            <div class="field"><label>Was patient told services are free?</label>
+              <select onchange="setPEI('${m.id}',${i},'informedFree',this.value)">
+                <option value="" ${!p.informedFree?'selected':''}>—</option>
+                <option value="Yes" ${p.informedFree==='Yes'?'selected':''}>Yes — staff informed them</option>
+                <option value="No" ${p.informedFree==='No'?'selected':''}>No — not informed</option>
+                <option value="Already knew" ${p.informedFree==='Already knew'?'selected':''}>Patient already knew</option>
               </select></div>
           </div>`:''}
 
