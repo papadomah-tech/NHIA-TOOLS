@@ -6941,6 +6941,7 @@ async function generateReport() {
     m1:'Administrative & Credentialing Compliance', m2:'Claims & Fraud Detection',
     m3:'Quality of Care', m4:'Utilisation, Staffing & Service Readiness',
     m5:'Top-Up & Co-Payment Detection', m6:'FPHC Compliance',
+    m7:'Patient Exit Interview',
   };
 
   // ── Per-visit computed data ──────────────────────────────────────────
@@ -6964,6 +6965,24 @@ async function generateReport() {
     const findings = [];
     MODULES.forEach(m => {
       if (!scores[m.id]) return;
+      if (m.id === 'm7') {
+        // M7 stores data in a .patients array, not .responses/indicators
+        // like every other module — needs its own extraction, same as
+        // the Observation Sheet's PEI findings.
+        const peiFindings = extractPEIFindings(mod.m7 || {});
+        peiFindings.forEach((f, i) => {
+          const indId = '7.' + (i + 1);
+          findings.push({
+            module: MOD_NAMES.m7, indId: indId, text: f.text,
+            response: 'No', weight: 9,
+            priority: 'high', priorityLabel: 'High',
+            remark: f.remark || '',
+            effect: deriveEffect(indId, f.text, 'No'),
+            recommendation: deriveRecommendation(indId, f.text, 'No'),
+          });
+        });
+        return;
+      }
       const inds = m.indicators || (m.sections ? m.sections.flatMap(sec => sec.items) : []);
       const resp = (mod[m.id]&&mod[m.id].responses) || {};
       const rmks = (mod[m.id]&&mod[m.id].remarks) || {};
@@ -7054,8 +7073,8 @@ async function generateReport() {
         + '<div class="rpt-exec-text">'
         + 'This consolidated report presents the findings of monitoring visits conducted between <strong>' + periodLabel + '</strong> '
         + 'by the NHIA M&amp;E team from the <strong>' + office + '</strong>, ' + region + ' Region. '
-        + 'A total of <strong>' + totalVisits + ' health service provider(s)</strong> were assessed across six performance modules '
-        + 'covering credentialing compliance, claims integrity, quality of care, service readiness, financial protection, and FPHC compliance.'
+        + 'A total of <strong>' + totalVisits + ' health service provider(s)</strong> were assessed across seven performance modules '
+        + 'covering credentialing compliance, claims integrity, quality of care, service readiness, financial protection, FPHC compliance, and patient exit interviews.'
         + '<br><br>'
         + 'The district recorded an average composite score of <strong>' + avgScore + '%</strong>. '
         + satCount + ' facilit' + (satCount===1?'y was':'ies were') + ' rated <strong>Satisfactory (≥80%)</strong>, '
@@ -7282,6 +7301,7 @@ function deriveEffect(id, text, response) {
     '4': 'Facility resource gap — inadequate medicines, equipment, or staffing compromises safe service delivery.',
     '5': 'Illegal financial burden on NHIS members — violation of NHIA Act 2012 (Act 852); member rights breached.',
     '6': 'FPHC policy violated — patients denied constitutionally mandated free primary care.',
+    '7': 'Patient-reported illegal charges or rights violations — direct evidence of NHIS Act 852 breach from the exit interview.',
   };
   return pfx + (effects[id2] || 'Compliance gap identified; corrective action required.');
 }
