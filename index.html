@@ -1421,21 +1421,20 @@ const MODULES = [
   // Source: Wappy1 checklist — Administrative Compliance section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:60,
+    id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:56,
     sections:[
       {title:'A. Licensing & Credentialing', items:[
         {id:'1.1', text:'Facility holds a valid regulatory license (HeFRA or relevant professional council) — not expired', weight:10, hasLicenseCalc:true},
         {id:'1.2', text:'NHIA credential is current — Fully Credentialed status, not expired; if Provisional, conditions are being met', weight:12, hasCredentialCalc:true},
         {id:'1.3', text:'NHIA–Service Provider Contract available; signed copy on file and conditions being complied with', weight:8},
-        {id:'1.4', text:'Date, entry/exit time of visit recorded; facility visitors register signed by monitoring team', weight:4},
-        {id:'1.5', text:'Provider operating within approved scope of services as specified in NHIA credential', weight:7},
+        {id:'1.4', text:'Services actually offered match the scope specified in the NHIA credential — cross-check against any "outside registered scope" flags from Module 4 Service Availability', weight:7},
       ]},
       {title:'B. Staff Professional Registration', items:[
-        {id:'1.6', text:'Sampled clinical staff hold current, unexpired professional PINs/registration with their regulatory council', weight:9, hasStaffPINCalc:true},
+        {id:'1.5', text:'Sampled clinical staff hold current, unexpired professional PINs/registration with their regulatory council', weight:9, hasStaffPINCalc:true},
       ]},
       {title:'C. Patient Rights & Complaints', items:[
-        {id:'1.7', text:'NHIA member charter and patient rights notice posted visibly in waiting area', weight:5},
-        {id:'1.8', text:'Patient complaint mechanism functional and visible — complaint box, posted NHIA hotline, or designated complaints officer identifiable', weight:5},
+        {id:'1.6', text:'NHIA member charter and patient rights notice posted visibly in waiting area', weight:5},
+        {id:'1.7', text:'Patient complaint mechanism functional and visible — complaint box, posted NHIA hotline, or designated complaints officer identifiable', weight:5},
       ]},
     ]
   },
@@ -2794,6 +2793,36 @@ function renderModuleContent(m){
     // Captures the actual license number and expiry date rather than
     // a bare Yes/No — expiry is computed automatically against today's
     // date, since "valid" is a fact derivable from data, not opinion.
+// Shared "where is the document" field set — used by both the
+// Regulatory License and NHIA Credential calculators. Some facilities
+// (commonly CHPS Compounds and Health Centres) don't keep these
+// documents on-site; they're held centrally at the District Health
+// Administration instead. That's a legitimate arrangement, not
+// automatically non-compliance — but it's also not quite the same as
+// having it on-site, so it's captured explicitly rather than silently
+// folded into a plain Yes/No.
+function docLocationFieldsHtml(prefix, dataObj){
+  var loc = dataObj.docLocation || '';
+  var html = '<div class="field" style="margin-top:8px"><label>Where is this document kept?</label>'
+    + '<select class="'+prefix+'-calc-input" data-'+prefix+'key="docLocation">'
+    + '<option value=""'+(!loc?' selected':'')+'>Select…</option>'
+    + '<option value="On-Site"'+(loc==='On-Site'?' selected':'')+'>On-Site at the facility</option>'
+    + '<option value="Held at DHA"'+(loc==='Held at DHA'?' selected':'')+'>Held at District Health Administration</option>'
+    + '<option value="Not Found"'+(loc==='Not Found'?' selected':'')+'>Not found / unavailable</option>'
+    + '</select></div>';
+  if(loc === 'Held at DHA'){
+    var vm = dataObj.verifyMethod || '';
+    html += '<div class="field" style="margin-top:8px"><label>How was validity confirmed?</label>'
+      + '<select class="'+prefix+'-calc-input" data-'+prefix+'key="verifyMethod">'
+      + '<option value=""'+(!vm?' selected':'')+'>Select…</option>'
+      + '<option value="Phone/DHA contact"'+(vm==='Phone/DHA contact'?' selected':'')+'>Confirmed by phone/contact with DHA</option>'
+      + '<option value="NHIA portal"'+(vm==='NHIA portal'?' selected':'')+'>Checked NHIA online credentialing portal</option>'
+      + '<option value="Verbal — pending"'+(vm==='Verbal — pending'?' selected':'')+'>Verbal confirmation from facility staff — pending desk verification</option>'
+      + '</select></div>';
+  }
+  return html;
+}
+
     if(ind.hasLicenseCalc){
       var lic = (data.licenseCalc || {});
       base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
@@ -2811,6 +2840,7 @@ function renderModuleContent(m){
         + '<div class="field"><label>Expiry Date</label>'
         + '<input class="lic-calc-input" data-lickey="expiryDate" type="date" value="'+(lic.expiryDate||'')+'"/></div>'
         + '</div>'
+        + docLocationFieldsHtml('lic', lic)
         + '<div id="lic-status" style="margin-top:8px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">' + computeLicenseStatusText(lic) + '</div>'
         + '</div>';
     }
@@ -2842,6 +2872,7 @@ function renderModuleContent(m){
             + '<option value="Yes"'+(cred.conditionsMet==='Yes'?' selected':'')+'>Yes</option>'
             + '<option value="No"'+(cred.conditionsMet==='No'?' selected':'')+'>No</option>'
             + '</select></div>' : '')
+        + docLocationFieldsHtml('cred', cred)
         + '<div id="cred-status" style="margin-top:8px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">' + computeCredentialStatusText(cred) + '</div>'
         + '</div>';
     }
@@ -3899,15 +3930,45 @@ function daysUntil(dateStr){
 }
 
 function computeLicenseStatusText(lic){
+  var expiryPart = '';
+  if(lic.expiryDate){
+    var d = daysUntil(lic.expiryDate);
+    expiryPart = d < 0 ? ('EXPIRED ' + Math.abs(d) + ' day(s) ago')
+      : d <= 60 ? ('expiring in ' + d + ' day(s)')
+      : ('valid, ' + d + ' day(s) remaining');
+  }
+  if(lic.docLocation === 'Held at DHA'){
+    var vmLabel = lic.verifyMethod === 'Phone/DHA contact' ? 'confirmed by phone with DHA'
+      : lic.verifyMethod === 'NHIA portal' ? 'confirmed via NHIA portal'
+      : lic.verifyMethod === 'Verbal — pending' ? 'verbal only — still needs desk verification'
+      : 'verification method not yet selected';
+    return '<span style="color:var(--gold);font-weight:700">◐ PARTIAL — held at DHA, not on-site</span>'
+      + (expiryPart ? ' (' + expiryPart + ')' : '') + ' — ' + vmLabel
+      + '<br><span style="font-weight:400;font-size:11px">Recommend marking this indicator Partial, not Yes.</span>';
+  }
+  if(lic.docLocation === 'Not Found'){
+    return '<span style="color:#e05050;font-weight:700">⚠ Document not found or unavailable</span>';
+  }
   if(!lic.expiryDate) return 'Enter the expiry date to check validity.';
-  var d = daysUntil(lic.expiryDate);
-  if(d < 0) return '<span style="color:#e05050;font-weight:700">⚠ EXPIRED — ' + Math.abs(d) + ' day(s) ago</span>';
-  if(d <= 60) return '<span style="color:var(--gold);font-weight:700">⚠ Expiring soon — ' + d + ' day(s) remaining</span>';
-  return '<span style="color:#22c99a;font-weight:700">✓ Valid — ' + d + ' day(s) remaining</span>';
+  var d2 = daysUntil(lic.expiryDate);
+  if(d2 < 0) return '<span style="color:#e05050;font-weight:700">⚠ EXPIRED — ' + Math.abs(d2) + ' day(s) ago</span>';
+  if(d2 <= 60) return '<span style="color:var(--gold);font-weight:700">⚠ Expiring soon — ' + d2 + ' day(s) remaining</span>';
+  return '<span style="color:#22c99a;font-weight:700">✓ Valid — ' + d2 + ' day(s) remaining</span>';
 }
 
 function computeCredentialStatusText(cred){
   if(!cred.status) return 'Select credential status to check validity.';
+  if(cred.docLocation === 'Held at DHA'){
+    var vmLabel2 = cred.verifyMethod === 'Phone/DHA contact' ? 'confirmed by phone with DHA'
+      : cred.verifyMethod === 'NHIA portal' ? 'confirmed via NHIA portal'
+      : cred.verifyMethod === 'Verbal — pending' ? 'verbal only — still needs desk verification'
+      : 'verification method not yet selected';
+    return '<span style="color:var(--gold);font-weight:700">◐ PARTIAL — credential held at DHA, not on-site</span> — ' + vmLabel2
+      + '<br><span style="font-weight:400;font-size:11px">Recommend marking this indicator Partial, not Yes — even if the credential itself is genuinely valid.</span>';
+  }
+  if(cred.docLocation === 'Not Found'){
+    return '<span style="color:#e05050;font-weight:700">⚠ Document not found or unavailable</span>';
+  }
   if(cred.status==='Expired') return '<span style="color:#e05050;font-weight:700">⚠ Credential marked Expired</span>';
   if(cred.status==='Not Available') return '<span style="color:#e05050;font-weight:700">⚠ No credential available</span>';
   if(cred.status==='Provisional'){
@@ -3946,6 +4007,11 @@ function setLicenseCalc(field, val){
   if(!currentVisit.modules['m1'].licenseCalc) currentVisit.modules['m1'].licenseCalc={};
   currentVisit.modules['m1'].licenseCalc[field] = val;
   dbPut('visits', currentVisit);
+  if(field==='docLocation'){
+    var m1a = MODULES.find(function(x){ return x.id==='m1'; });
+    if(m1a) renderModuleContent(m1a);
+    return;
+  }
   var el = document.getElementById('lic-status');
   if(el) el.innerHTML = computeLicenseStatusText(currentVisit.modules['m1'].licenseCalc);
 }
@@ -3955,8 +4021,9 @@ function setCredentialCalc(field, val){
   if(!currentVisit.modules['m1'].credentialCalc) currentVisit.modules['m1'].credentialCalc={};
   currentVisit.modules['m1'].credentialCalc[field] = val;
   dbPut('visits', currentVisit);
-  if(field==='status'){
-    // Re-render so the Provisional-conditions fields show/hide
+  if(field==='status' || field==='docLocation'){
+    // Re-render so the Provisional-conditions fields and/or the
+    // verification-method field show/hide correctly
     var m1 = MODULES.find(function(x){ return x.id==='m1'; });
     if(m1) renderModuleContent(m1);
     return;
