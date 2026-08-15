@@ -1421,15 +1421,21 @@ const MODULES = [
   // Source: Wappy1 checklist — Administrative Compliance section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:48,
+    id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:60,
     sections:[
-      {title:'A. Credentialing & Contractual', items:[
-        {id:'1.1', text:'NHIA credentialing certificate available, valid, and displayed (check availability and validity)', weight:12},
-        {id:'1.2', text:'NHIA–Service Provider Contract available; signed copy on file and conditions being complied with', weight:10},
-        {id:'1.3', text:'Date, entry/exit time of visit recorded; facility visitors register signed by monitoring team', weight:5},
-        {id:'1.4', text:'Provider operating within approved scope of services as specified in NHIA credential', weight:8},
-        {id:'1.5', text:'NHIA member charter and patient rights notice posted visibly in waiting area', weight:7},
-        {id:'1.6', text:'Patient complaint mechanism functional and visible — complaint box, posted NHIA hotline, or designated complaints officer identifiable', weight:6},
+      {title:'A. Licensing & Credentialing', items:[
+        {id:'1.1', text:'Facility holds a valid regulatory license (HeFRA or relevant professional council) — not expired', weight:10, hasLicenseCalc:true},
+        {id:'1.2', text:'NHIA credential is current — Fully Credentialed status, not expired; if Provisional, conditions are being met', weight:12, hasCredentialCalc:true},
+        {id:'1.3', text:'NHIA–Service Provider Contract available; signed copy on file and conditions being complied with', weight:8},
+        {id:'1.4', text:'Date, entry/exit time of visit recorded; facility visitors register signed by monitoring team', weight:4},
+        {id:'1.5', text:'Provider operating within approved scope of services as specified in NHIA credential', weight:7},
+      ]},
+      {title:'B. Staff Professional Registration', items:[
+        {id:'1.6', text:'Sampled clinical staff hold current, unexpired professional PINs/registration with their regulatory council', weight:9, hasStaffPINCalc:true},
+      ]},
+      {title:'C. Patient Rights & Complaints', items:[
+        {id:'1.7', text:'NHIA member charter and patient rights notice posted visibly in waiting area', weight:5},
+        {id:'1.8', text:'Patient complaint mechanism functional and visible — complaint box, posted NHIA hotline, or designated complaints officer identifiable', weight:5},
       ]},
     ]
   },
@@ -2784,6 +2790,90 @@ function renderModuleContent(m){
             + '</div>'
             + '</div>';
     }
+    // 1.1 — Regulatory License Check (HeFRA / professional council).
+    // Captures the actual license number and expiry date rather than
+    // a bare Yes/No — expiry is computed automatically against today's
+    // date, since "valid" is a fact derivable from data, not opinion.
+    if(ind.hasLicenseCalc){
+      var lic = (data.licenseCalc || {});
+      base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
+        + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">📋 Regulatory License Check</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+        + '<div class="field"><label>Issuing Body</label>'
+        + '<select class="lic-calc-input" data-lickey="issuingBody">'
+        + '<option value=""'+(!lic.issuingBody?' selected':'')+'>Select…</option>'
+        + ['HeFRA','Pharmacy Council','Nursing & Midwifery Council','Medical & Dental Council','Allied Health Professions Council','Other'].map(function(b){
+            return '<option value="'+b+'"'+(lic.issuingBody===b?' selected':'')+'>'+b+'</option>';
+          }).join('')
+        + '</select></div>'
+        + '<div class="field"><label>License / Registration No.</label>'
+        + '<input class="lic-calc-input" data-lickey="licenseNo" type="text" placeholder="e.g. HF-2024-00123" value="'+(lic.licenseNo||'')+'"/></div>'
+        + '<div class="field"><label>Expiry Date</label>'
+        + '<input class="lic-calc-input" data-lickey="expiryDate" type="date" value="'+(lic.expiryDate||'')+'"/></div>'
+        + '</div>'
+        + '<div id="lic-status" style="margin-top:8px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">' + computeLicenseStatusText(lic) + '</div>'
+        + '</div>';
+    }
+
+    // 1.2 — NHIA Credential Check. Distinct from the regulatory
+    // license above — a facility needs BOTH. Captures status
+    // (including Provisional, which carries conditions that should
+    // themselves be checked) and expiry, computed the same way.
+    if(ind.hasCredentialCalc){
+      var cred = (data.credentialCalc || {});
+      base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
+        + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">🪪 NHIA Credential Check</div>'
+        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
+        + '<div class="field"><label>Credential Status</label>'
+        + '<select class="cred-calc-input" data-credkey="status">'
+        + '<option value=""'+(!cred.status?' selected':'')+'>Select…</option>'
+        + ['Fully Credentialed','Provisional','Expired','Not Available'].map(function(st){
+            return '<option value="'+st+'"'+(cred.status===st?' selected':'')+'>'+st+'</option>';
+          }).join('')
+        + '</select></div>'
+        + '<div class="field"><label>Expiry Date</label>'
+        + '<input class="cred-calc-input" data-credkey="expiryDate" type="date" value="'+(cred.expiryDate||'')+'"/></div>'
+        + '</div>'
+        + (cred.status==='Provisional' ? '<div class="field" style="margin-top:8px"><label>Provisional Conditions (if known)</label>'
+            + '<textarea class="cred-calc-input" data-credkey="conditions" rows="2" placeholder="Conditions attached to provisional credential…">'+(cred.conditions||'')+'</textarea>'
+            + '<label style="margin-top:6px">Are these conditions currently being met?</label>'
+            + '<select class="cred-calc-input" data-credkey="conditionsMet">'
+            + '<option value=""'+(!cred.conditionsMet?' selected':'')+'>—</option>'
+            + '<option value="Yes"'+(cred.conditionsMet==='Yes'?' selected':'')+'>Yes</option>'
+            + '<option value="No"'+(cred.conditionsMet==='No'?' selected':'')+'>No</option>'
+            + '</select></div>' : '')
+        + '<div id="cred-status" style="margin-top:8px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">' + computeCredentialStatusText(cred) + '</div>'
+        + '</div>';
+    }
+
+    // 1.6 — Staff Professional Registration (PIN) sample check.
+    // Samples up to 5 clinical staff and checks each one's individual
+    // professional PIN/registration expiry — a facility's own NHIA
+    // credential being valid says nothing about whether the specific
+    // staff practicing there are currently registered.
+    if(ind.hasStaffPINCalc){
+      var pinData = (data.staffPINCalc || {});
+      var pinRows = '';
+      for(var pi=1; pi<=5; pi++){
+        var nK='p'+pi+'_name', cK='p'+pi+'_cadre', pK='p'+pi+'_pin', eK='p'+pi+'_exp';
+        pinRows += '<div style="border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:6px">'
+          + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">'
+          + '<input class="pin-calc-input" data-pinkey="'+nK+'" type="text" placeholder="Staff #'+pi+' name" value="'+(pinData[nK]||'')+'" style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px"/>'
+          + '<input class="pin-calc-input" data-pinkey="'+cK+'" type="text" placeholder="Cadre" value="'+(pinData[cK]||'')+'" style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px"/>'
+          + '</div>'
+          + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'
+          + '<input class="pin-calc-input" data-pinkey="'+pK+'" type="text" placeholder="Professional PIN" value="'+(pinData[pK]||'')+'" style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px"/>'
+          + '<input class="pin-calc-input" data-pinkey="'+eK+'" type="date" value="'+(pinData[eK]||'')+'" style="padding:6px 8px;font-size:12px;border:1.5px solid var(--border);border-radius:6px"/>'
+          + '</div></div>';
+      }
+      base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
+        + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:6px">🪪 Staff Professional Registration — Sample Check</div>'
+        + '<div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6">Sample up to 5 clinical staff on duty and check their professional PIN expiry against today\'s date.</div>'
+        + pinRows
+        + '<div id="pin-summary" style="margin-top:6px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">' + computeStaffPINSummary(pinData) + '</div>'
+        + '</div>';
+    }
+
     // 4.2 — Essential NHIS Medicines Availability Check. Five rows —
     // medicine name (pick from the list or type your own), then three
     // straightforward checks matching exactly what the indicator asks
@@ -3673,6 +3763,18 @@ function renderModuleContent(m){
   document.getElementById('module-content').querySelectorAll('.att-calc-input').forEach(function(el){
     el.addEventListener('input', function(){ setAttCalc(this.dataset.attkey, this.value); });
   });
+  // Regulatory license calc
+  document.getElementById('module-content').querySelectorAll('.lic-calc-input').forEach(function(el){
+    el.addEventListener(el.tagName==='SELECT' ? 'change' : 'input', function(){ setLicenseCalc(this.dataset.lickey, this.value); });
+  });
+  // NHIA credential calc
+  document.getElementById('module-content').querySelectorAll('.cred-calc-input').forEach(function(el){
+    el.addEventListener(el.tagName==='SELECT' ? 'change' : 'input', function(){ setCredentialCalc(this.dataset.credkey, this.value); });
+  });
+  // Staff PIN registration calc
+  document.getElementById('module-content').querySelectorAll('.pin-calc-input').forEach(function(el){
+    el.addEventListener('input', function(){ setStaffPINCalc(this.dataset.pinkey, this.value); });
+  });
   // Prescription calc
   document.getElementById('module-content').querySelectorAll('.px-calc-input').forEach(function(el){
     el.addEventListener('input', function(){ setPrescCalc(this.dataset.pxkey, this.value); });
@@ -3784,6 +3886,92 @@ function setBedCalc(field, val){
     sumEl.textContent=rate>85?'High occupancy — facility may be operating above safe capacity.':rate>60?'Moderate occupancy — within acceptable range.':'Low occupancy — capacity available.';
     sumEl.style.color=rate>85?'var(--red)':rate>60?'var(--gold)':'var(--accent2)';
   }
+}
+
+// Shared date-vs-today helper — returns days remaining (negative if
+// already expired), or null if no date given.
+function daysUntil(dateStr){
+  if(!dateStr) return null;
+  var target = new Date(dateStr+'T00:00:00');
+  if(isNaN(target.getTime())) return null;
+  var today = new Date(); today.setHours(0,0,0,0);
+  return Math.round((target - today) / 86400000);
+}
+
+function computeLicenseStatusText(lic){
+  if(!lic.expiryDate) return 'Enter the expiry date to check validity.';
+  var d = daysUntil(lic.expiryDate);
+  if(d < 0) return '<span style="color:#e05050;font-weight:700">⚠ EXPIRED — ' + Math.abs(d) + ' day(s) ago</span>';
+  if(d <= 60) return '<span style="color:var(--gold);font-weight:700">⚠ Expiring soon — ' + d + ' day(s) remaining</span>';
+  return '<span style="color:#22c99a;font-weight:700">✓ Valid — ' + d + ' day(s) remaining</span>';
+}
+
+function computeCredentialStatusText(cred){
+  if(!cred.status) return 'Select credential status to check validity.';
+  if(cred.status==='Expired') return '<span style="color:#e05050;font-weight:700">⚠ Credential marked Expired</span>';
+  if(cred.status==='Not Available') return '<span style="color:#e05050;font-weight:700">⚠ No credential available</span>';
+  if(cred.status==='Provisional'){
+    var base = '<span style="color:var(--gold);font-weight:700">⚠ Provisional credential</span>';
+    if(cred.conditionsMet==='No') return base + ' — <span style="color:#e05050">conditions NOT being met</span>';
+    if(cred.conditionsMet==='Yes') return base + ' — conditions currently met';
+    return base + ' — confirm whether conditions are being met';
+  }
+  // Fully Credentialed
+  if(!cred.expiryDate) return '<span style="color:#22c99a;font-weight:700">✓ Fully Credentialed</span> — enter expiry date to check';
+  var d = daysUntil(cred.expiryDate);
+  if(d < 0) return '<span style="color:#e05050;font-weight:700">⚠ EXPIRED — ' + Math.abs(d) + ' day(s) ago, despite Fully Credentialed status</span>';
+  if(d <= 60) return '<span style="color:var(--gold);font-weight:700">⚠ Expiring soon — ' + d + ' day(s) remaining</span>';
+  return '<span style="color:#22c99a;font-weight:700">✓ Valid — ' + d + ' day(s) remaining</span>';
+}
+
+function computeStaffPINSummary(pinData){
+  var named = 0, current = 0, expired = [];
+  for(var i=1; i<=5; i++){
+    var name = (pinData['p'+i+'_name']||'').trim();
+    if(!name) continue;
+    named++;
+    var exp = pinData['p'+i+'_exp'];
+    if(!exp) continue;
+    var d = daysUntil(exp);
+    if(d !== null && d < 0) expired.push(name);
+    else if(d !== null) current++;
+  }
+  if(named===0) return 'Enter staff names and PIN expiry dates above to see a summary here.';
+  if(expired.length===0) return '<strong style="color:#22c99a">✓ ' + current + ' of ' + named + ' checked staff have current registration</strong>';
+  return '<strong style="color:#e05050">⚠ ' + expired.length + ' of ' + named + ' staff have EXPIRED registration:</strong> ' + expired.join(', ');
+}
+
+function setLicenseCalc(field, val){
+  if(!currentVisit.modules['m1']) currentVisit.modules['m1']={responses:{},remarks:{}};
+  if(!currentVisit.modules['m1'].licenseCalc) currentVisit.modules['m1'].licenseCalc={};
+  currentVisit.modules['m1'].licenseCalc[field] = val;
+  dbPut('visits', currentVisit);
+  var el = document.getElementById('lic-status');
+  if(el) el.innerHTML = computeLicenseStatusText(currentVisit.modules['m1'].licenseCalc);
+}
+
+function setCredentialCalc(field, val){
+  if(!currentVisit.modules['m1']) currentVisit.modules['m1']={responses:{},remarks:{}};
+  if(!currentVisit.modules['m1'].credentialCalc) currentVisit.modules['m1'].credentialCalc={};
+  currentVisit.modules['m1'].credentialCalc[field] = val;
+  dbPut('visits', currentVisit);
+  if(field==='status'){
+    // Re-render so the Provisional-conditions fields show/hide
+    var m1 = MODULES.find(function(x){ return x.id==='m1'; });
+    if(m1) renderModuleContent(m1);
+    return;
+  }
+  var el = document.getElementById('cred-status');
+  if(el) el.innerHTML = computeCredentialStatusText(currentVisit.modules['m1'].credentialCalc);
+}
+
+function setStaffPINCalc(field, val){
+  if(!currentVisit.modules['m1']) currentVisit.modules['m1']={responses:{},remarks:{}};
+  if(!currentVisit.modules['m1'].staffPINCalc) currentVisit.modules['m1'].staffPINCalc={};
+  currentVisit.modules['m1'].staffPINCalc[field] = val;
+  dbPut('visits', currentVisit);
+  var el = document.getElementById('pin-summary');
+  if(el) el.innerHTML = computeStaffPINSummary(currentVisit.modules['m1'].staffPINCalc);
 }
 
 function setPrescCalc(field, val){
