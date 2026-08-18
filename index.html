@@ -2058,6 +2058,21 @@ async function loadAssignmentsFromServer(){
     for(var i=0; i<data.length; i++){
       var incoming = _serverRowToAssignment(data[i]);
       var local = await dbGet('assignments', incoming.id);
+      // visitIds/doVisitId specifically get merged (union), never
+      // wholesale replaced — multiple team members can each add a
+      // different facility visit to the same assignment around the
+      // same time, and pushAssignmentToServer() runs fire-and-forget
+      // (not awaited), so there's a real window where a periodic pull
+      // can read the server's pre-push state. A blind "last write
+      // wins" replace would silently discard whichever visit hadn't
+      // finished pushing yet — a full replace is fine for fields like
+      // status/leader/dates that only one person edits at a time, but
+      // not for the one field multiple people update concurrently.
+      if(local){
+        var mergedVisitIds = Array.from(new Set((local.visitIds||[]).concat(incoming.visitIds||[])));
+        incoming.visitIds = mergedVisitIds;
+        if(!incoming.doVisitId && local.doVisitId) incoming.doVisitId = local.doVisitId;
+      }
       // Last-write-wins by server updated_at vs local's own last-known value.
       // A brand-new local assignment (not yet pushed) is never overwritten
       // here — it gets pushed instead the next time it's saved.
