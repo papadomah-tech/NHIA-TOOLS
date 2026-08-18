@@ -1099,6 +1099,7 @@ html,body{height:100%;overflow:hidden}
     <div class="topbar-back" onclick="showDashboard()">←</div>
     <div><div class="topbar-title">Observation Sheet</div><div class="topbar-sub">Leave copy with facility</div></div>
     <button class="topbar-action" onclick="printObsSheet()">🖨 Print</button>
+    <button class="topbar-action" onclick="shareObsSheetPDF()" style="margin-left:6px">📤 Share PDF</button>
   </div>
   <div class="scroll" style="padding-top:16px" id="obs-scroll">
     <div class="card" style="margin-bottom:12px;padding:14px 16px;font-size:12px;color:var(--muted);line-height:1.6;border-left:3px solid var(--gold)">
@@ -1197,6 +1198,7 @@ html,body{height:100%;overflow:hidden}
 
     <div style="padding:8px 0 16px">
       <button class="btn btn-gold" onclick="printObsSheet()" style="margin-bottom:10px">🖨 Print &amp; Leave with Facility</button>
+      <button class="btn" onclick="shareObsSheetPDF()" style="margin-bottom:10px;background:rgba(26,140,91,.1);color:var(--accent2);border:1px solid rgba(26,140,91,.3)">📤 Share PDF (WhatsApp, Email, etc.)</button>
       <button class="btn btn-secondary" onclick="saveObsSheet()">💾 Save Observations</button>
     </div>
   </div>
@@ -4571,6 +4573,75 @@ function saveObsSheet(){
   dbPut('visits', currentVisit);
   showToast('Observation sheet saved','success');
   triggerBackgroundSync();
+}
+
+// ── Share Observation Sheet as PDF ───────────────────────────────────
+// Print already lets the browser's own dialog save to PDF, but that's
+// a manual multi-tap detour and doesn't hand the file to WhatsApp/
+// email directly. This generates an actual PDF blob client-side and
+// opens the device's native share sheet with it attached — falls back
+// to a plain download if the browser doesn't support file sharing.
+var _html2pdfLoaded = false;
+function loadHtml2Pdf(){
+  return new Promise(function(resolve, reject){
+    if(_html2pdfLoaded && window.html2pdf){ resolve(); return; }
+    var script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+    script.onload = function(){ _html2pdfLoaded = true; resolve(); };
+    script.onerror = function(){ reject(new Error('Could not load PDF library — check your connection')); };
+    document.head.appendChild(script);
+  });
+}
+
+async function shareObsSheetPDF(){
+  if(!currentVisit){ showToast('No visit open','error'); return; }
+  saveObsSheet();
+  showToast('Preparing PDF…','');
+  var container = null;
+  try {
+    await loadHtml2Pdf();
+    var bodyHtml = await buildObsPrintHtml();
+    var fullHtml = buildCleanReportHtml(bodyHtml);
+
+    container = document.createElement('div');
+    container.innerHTML = fullHtml;
+    var innerBody = container.querySelector('.report-screen-inner') || container;
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:800px;background:#fff';
+    document.body.appendChild(container);
+
+    var facilityName = (currentVisit.setup && currentVisit.setup.providerName) || 'Facility';
+    var safeName = facilityName.replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'') || 'Visit';
+    var fileName = 'Observation_Sheet_' + safeName + '.pdf';
+
+    var pdfBlob = await window.html2pdf().set({
+      margin: 10,
+      filename: fileName,
+      html2canvas: { scale: 2, useCORS: true },
+      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    }).from(innerBody).outputPdf('blob');
+
+    document.body.removeChild(container);
+    container = null;
+
+    var pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
+
+    if(navigator.canShare && navigator.canShare({ files: [pdfFile] })){
+      await navigator.share({ files: [pdfFile], title: 'Observation Sheet — ' + facilityName });
+      showToast('Shared','success');
+    } else {
+      var url = URL.createObjectURL(pdfBlob);
+      var a = document.createElement('a');
+      a.href = url; a.download = fileName;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
+      showToast('PDF downloaded — share it from your Downloads/Files app','success');
+    }
+  } catch(e){
+    if(container && container.parentNode) document.body.removeChild(container);
+    if(e && e.name === 'AbortError') return; // user cancelled the native share sheet — not an error
+    console.warn('[PDF Share] failed:', e);
+    showToast('Failed to generate PDF: ' + (e.message||'unknown error'), 'error');
+  }
 }
 
 async function printObsSheet(){
