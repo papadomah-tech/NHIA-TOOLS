@@ -2021,8 +2021,24 @@ function _serverRowToAssignment(row){
 async function pushAssignmentToServer(assignment){
   if(!sb || !currentUser || !userTeamId || !navigator.onLine) return;
   try {
-    var { error } = await sb.from('assignments').upsert(_assignmentToServerRow(assignment), { onConflict: 'id' });
-    if(error) console.warn('[Assignments] push failed:', error.message);
+    var row = _assignmentToServerRow(assignment);
+    // Deliberately NOT upsert(). Under RLS, an upsert is still
+    // fundamentally an INSERT statement (INSERT ... ON CONFLICT DO
+    // UPDATE) — so it gets evaluated against the INSERT policy first,
+    // which requires role='leader'. That silently blocked a member
+    // from ever successfully updating an assignment they didn't
+    // create (e.g. adding a facility visit to it), even though the
+    // separate, more permissive UPDATE policy would have allowed it.
+    // Trying update() first, and only falling back to insert() when
+    // nothing existed to update, routes each operation to the policy
+    // that actually matches what it's doing.
+    var { data: updated, error: updErr } = await sb.from('assignments')
+      .update(row).eq('id', assignment.id).select('id');
+    if(updErr){ console.warn('[Assignments] update failed:', updErr.message); return; }
+    if(!updated || !updated.length){
+      var { error: insErr } = await sb.from('assignments').insert(row);
+      if(insErr) console.warn('[Assignments] insert failed:', insErr.message);
+    }
   } catch(e){ console.warn('[Assignments] push error:', e.message); }
 }
 
