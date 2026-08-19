@@ -1423,20 +1423,19 @@ const MODULES = [
   // Source: Wappy1 checklist — Administrative Compliance section
   // ══════════════════════════════════════════════════════════════════
   {
-    id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:56,
+    id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:46,
     sections:[
       {title:'A. Licensing & Credentialing', items:[
-        {id:'1.1', text:'Facility holds a valid regulatory license (HeFRA or relevant professional council) — not expired', weight:10, hasLicenseCalc:true},
-        {id:'1.2', text:'NHIA credential is current — Fully Credentialed status, not expired; if Provisional, conditions are being met', weight:12, hasCredentialCalc:true},
-        {id:'1.3', text:'NHIA–Service Provider Contract available; signed copy on file and conditions being complied with', weight:8, hasContractCalc:true},
-        {id:'1.4', text:'Services actually offered match the scope specified in the NHIA credential — cross-check against any "outside registered scope" flags from Module 4 Service Availability', weight:7},
+        {id:'1.1', text:'NHIA credential is current — Fully Credentialed status, not expired; if Provisional, conditions are being met', weight:12, hasCredentialCalc:true},
+        {id:'1.2', text:'NHIA–Service Provider Contract available; signed copy on file and conditions being complied with', weight:8, hasContractCalc:true},
+        {id:'1.3', text:'Services actually offered match the scope specified in the NHIA credential — cross-check against any "outside registered scope" flags from Module 4 Service Availability', weight:7},
       ]},
       {title:'B. Staff Professional Registration', items:[
-        {id:'1.5', text:'Sampled clinical staff hold current, unexpired professional PINs/registration with their regulatory council', weight:9, hasStaffPINCalc:true},
+        {id:'1.4', text:'Sampled clinical staff hold current, unexpired professional PINs/registration with their regulatory council', weight:9, hasStaffPINCalc:true},
       ]},
       {title:'C. Patient Rights & Complaints', items:[
-        {id:'1.6', text:'NHIA member charter and patient rights notice posted visibly in waiting area', weight:5},
-        {id:'1.7', text:'Patient complaint mechanism functional and visible — complaint box, posted NHIA hotline, or designated complaints officer identifiable', weight:5},
+        {id:'1.5', text:'NHIA member charter and patient rights notice posted visibly in waiting area', weight:5},
+        {id:'1.6', text:'Patient complaint mechanism functional and visible — complaint box, posted NHIA hotline, or designated complaints officer identifiable', weight:5},
       ]},
     ]
   },
@@ -2863,32 +2862,13 @@ function docLocationFieldsHtml(prefix, dataObj){
   return html;
 }
 
-    if(ind.hasLicenseCalc){
-      var lic = (data.licenseCalc || {});
-      base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
-        + '<div style="font-size:11px;font-weight:700;color:var(--accent2);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">📋 Regulatory License Check</div>'
-        + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'
-        + '<div class="field"><label>Issuing Body</label>'
-        + '<select class="lic-calc-input" data-lickey="issuingBody">'
-        + '<option value=""'+(!lic.issuingBody?' selected':'')+'>Select…</option>'
-        + ['HeFRA','Pharmacy Council','Nursing & Midwifery Council','Medical & Dental Council','Allied Health Professions Council','Other'].map(function(b){
-            return '<option value="'+b+'"'+(lic.issuingBody===b?' selected':'')+'>'+b+'</option>';
-          }).join('')
-        + '</select></div>'
-        + '<div class="field"><label>License / Registration No.</label>'
-        + '<input class="lic-calc-input" data-lickey="licenseNo" type="text" placeholder="e.g. HF-2024-00123" value="'+(lic.licenseNo||'')+'"/></div>'
-        + '<div class="field"><label>Expiry Date</label>'
-        + '<input class="lic-calc-input" data-lickey="expiryDate" type="date" value="'+(lic.expiryDate||'')+'"/></div>'
-        + '</div>'
-        + docLocationFieldsHtml('lic', lic)
-        + '<div id="lic-status" style="margin-top:8px;padding:8px 12px;background:var(--surface);border-radius:8px;font-size:12px;color:var(--muted)">' + computeLicenseStatusText(lic) + '</div>'
-        + '</div>';
-    }
-
-    // 1.2 — NHIA Credential Check. Distinct from the regulatory
-    // license above — a facility needs BOTH. Captures status
-    // (including Provisional, which carries conditions that should
-    // themselves be checked) and expiry, computed the same way.
+    // 1.1 — NHIA Credential Check. The regulatory-license check that
+    // used to sit alongside this was removed — in practice officers
+    // only ever verify the NHIA credential itself, not the underlying
+    // HeFRA/professional-council license separately.
+    // Captures status (including Provisional, which carries
+    // conditions that should themselves be checked) and expiry,
+    // computed the same way.
     if(ind.hasCredentialCalc){
       var cred = (data.credentialCalc || {});
       base += '<div class="card" style="margin-top:8px;margin-bottom:4px;padding:12px 14px">'
@@ -3854,10 +3834,6 @@ function docLocationFieldsHtml(prefix, dataObj){
   document.getElementById('module-content').querySelectorAll('.att-calc-input').forEach(function(el){
     el.addEventListener('input', function(){ setAttCalc(this.dataset.attkey, this.value); });
   });
-  // Regulatory license calc
-  document.getElementById('module-content').querySelectorAll('.lic-calc-input').forEach(function(el){
-    el.addEventListener(el.tagName==='SELECT' ? 'change' : 'input', function(){ setLicenseCalc(this.dataset.lickey, this.value); });
-  });
   // NHIA credential calc
   document.getElementById('module-content').querySelectorAll('.cred-calc-input').forEach(function(el){
     el.addEventListener(el.tagName==='SELECT' ? 'change' : 'input', function(){ setCredentialCalc(this.dataset.credkey, this.value); });
@@ -3993,33 +3969,6 @@ function daysUntil(dateStr){
   return Math.round((target - today) / 86400000);
 }
 
-function computeLicenseStatusText(lic){
-  var expiryPart = '';
-  if(lic.expiryDate){
-    var d = daysUntil(lic.expiryDate);
-    expiryPart = d < 0 ? ('EXPIRED ' + Math.abs(d) + ' day(s) ago')
-      : d <= 60 ? ('expiring in ' + d + ' day(s)')
-      : ('valid, ' + d + ' day(s) remaining');
-  }
-  if(lic.docLocation === 'Held at DHA'){
-    var vmLabel = lic.verifyMethod === 'Phone/DHA contact' ? 'confirmed by phone with DHA'
-      : lic.verifyMethod === 'NHIA portal' ? 'confirmed via NHIA portal'
-      : lic.verifyMethod === 'Verbal — pending' ? 'verbal only — still needs desk verification'
-      : 'verification method not yet selected';
-    return '<span style="color:var(--gold);font-weight:700">◐ PARTIAL — held at DHA, not on-site</span>'
-      + (expiryPart ? ' (' + expiryPart + ')' : '') + ' — ' + vmLabel
-      + '<br><span style="font-weight:400;font-size:11px">Recommend marking this indicator Partial, not Yes.</span>';
-  }
-  if(lic.docLocation === 'Not Found'){
-    return '<span style="color:#e05050;font-weight:700">⚠ Document not found or unavailable</span>';
-  }
-  if(!lic.expiryDate) return 'Enter the expiry date to check validity.';
-  var d2 = daysUntil(lic.expiryDate);
-  if(d2 < 0) return '<span style="color:#e05050;font-weight:700">⚠ EXPIRED — ' + Math.abs(d2) + ' day(s) ago</span>';
-  if(d2 <= 60) return '<span style="color:var(--gold);font-weight:700">⚠ Expiring soon — ' + d2 + ' day(s) remaining</span>';
-  return '<span style="color:#22c99a;font-weight:700">✓ Valid — ' + d2 + ' day(s) remaining</span>';
-}
-
 function computeCredentialStatusText(cred){
   if(!cred.status) return 'Select credential status to check validity.';
   if(cred.docLocation === 'Held at DHA'){
@@ -4089,19 +4038,6 @@ function computeStaffPINSummary(pinData){
   return '<strong style="color:#e05050">⚠ ' + expired.length + ' of ' + named + ' staff have EXPIRED registration:</strong> ' + expired.join(', ');
 }
 
-function setLicenseCalc(field, val){
-  if(!currentVisit.modules['m1']) currentVisit.modules['m1']={responses:{},remarks:{}};
-  if(!currentVisit.modules['m1'].licenseCalc) currentVisit.modules['m1'].licenseCalc={};
-  currentVisit.modules['m1'].licenseCalc[field] = val;
-  dbPut('visits', currentVisit);
-  if(field==='docLocation'){
-    var m1a = MODULES.find(function(x){ return x.id==='m1'; });
-    if(m1a) renderModuleContent(m1a);
-    return;
-  }
-  var el = document.getElementById('lic-status');
-  if(el) el.innerHTML = computeLicenseStatusText(currentVisit.modules['m1'].licenseCalc);
-}
 
 function setCredentialCalc(field, val){
   if(!currentVisit.modules['m1']) currentVisit.modules['m1']={responses:{},remarks:{}};
@@ -4844,7 +4780,7 @@ function mergeDataArray(localArr, remoteArr){
 // Generic merge for a module's own calculator data — everything
 // beyond responses/remarks/setting, which are handled separately.
 // Arrays (claims/folders/patients) use the row-by-row merge above;
-// nested objects (licenseCalc, credentialCalc, contractCalc,
+// nested objects (credentialCalc, contractCalc,
 // staffPINCalc, medicineCalc, prescCalc, morbidCalc, m4data, and any
 // future hasXCalc block) get deep-filled recursively. Deliberately
 // generic and keyed off whatever fields actually exist on the remote
