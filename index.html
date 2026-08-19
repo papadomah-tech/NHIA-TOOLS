@@ -1426,7 +1426,11 @@ const MODULES = [
     id:'m1', num:'01', title:'Administrative Compliance', color:'#1A8C5B', maxScore:46,
     sections:[
       {title:'A. Licensing & Credentialing', items:[
-        {id:'1.1', text:'NHIA credential is current — Fully Credentialed status, not expired; if Provisional, conditions are being met', weight:12, hasCredentialCalc:true},
+        {id:'1.1', text:'NHIA credential is current — Fully Credentialed status, not expired; if Provisional, conditions are being met', weight:12, hasCredentialCalc:true,
+          obsStatement: {
+            met:    'The facility is fully credentialed, with the certificate available for inspection.',
+            notMet: 'Credentialing is location-specific and a copy must be available at the facility for inspection at all times.',
+          }},
         {id:'1.2', text:'NHIA–Service Provider Contract available; signed copy on file and conditions being complied with', weight:8, hasContractCalc:true},
         {id:'1.3', text:'Services actually offered match the scope specified in the NHIA credential — cross-check against any "outside registered scope" flags from Module 4 Service Availability', weight:7},
       ]},
@@ -4491,6 +4495,12 @@ function buildObsFindingsList(obs){
     var rmks  = mData.remarks   || {};
     var mDef  = MODULES.find(function(m){ return m.id === th.id; });
     var findings = [];
+    // Indicators with a hand-crafted obsStatement always get a line —
+    // met or not — instead of only appearing when there's a gap. Lets
+    // specific indicators (starting with the NHIA Credential check)
+    // carry their own precise wording rather than the auto-derived
+    // phrasing, for both the compliant and non-compliant case.
+    var customLines = [];
 
     if(th.id === 'm7'){
       findings = extractPEIFindings(mData);
@@ -4498,6 +4508,11 @@ function buildObsFindingsList(obs){
       var inds = mDef.indicators || (mDef.sections ? mDef.sections.flatMap(function(s){ return s.items; }) : []);
       inds.forEach(function(ind){
         var r = resp[ind.id];
+        if(ind.obsStatement){
+          if(r === 'Yes') customLines.push(ind.obsStatement.met);
+          else if(r === 'No' || r === 'Partial') customLines.push(ind.obsStatement.notMet);
+          return; // handled — don't also evaluate it as a plain gap below
+        }
         if(r === 'No' || r === 'Partial'){
           findings.push({
             id: ind.id,
@@ -4509,9 +4524,13 @@ function buildObsFindingsList(obs){
       });
     }
 
-    // Build finding text — auto from responses + manual override
-    var autoText = findings.length
-      ? findings.map(function(f,i){ return (i+1)+'. '+phraseFinding(f.text, f.remark); }).join('\n')
+    // Build finding text — custom statements first, then auto-derived
+    // gap findings, else the clean-module statement if there's
+    // genuinely nothing to say.
+    var gapLines = findings.map(function(f){ return phraseFinding(f.text, f.remark); });
+    var allLines = customLines.concat(gapLines);
+    var autoText = allLines.length
+      ? allLines.map(function(line,i){ return (i+1)+'. '+line; }).join('\n')
       : cleanModuleStatement(th.label);
     var overrideVal = obsOverrides['text_'+th.id];
     var savedText = (overrideVal !== undefined && overrideVal.trim() !== '') ? overrideVal : autoText;
@@ -4678,11 +4697,24 @@ async function buildObsPrintHtml(){
       var autoText = cleanModuleStatement(th.label);
       if(mDef){
         var inds = mDef.indicators || (mDef.sections ? mDef.sections.flatMap(function(sec){ return sec.items; }) : []);
-        var gaps = inds.filter(function(ind){ return resp[ind.id]==='No'||resp[ind.id]==='Partial'; });
-        if(gaps.length){
-          autoText = gaps.map(function(f,i){ return (i+1)+'. '+phraseFinding(f.text, rmks[f.id]); }).join('\n');
+        var customLines2 = [];
+        var gaps = [];
+        inds.forEach(function(ind){
+          var r = resp[ind.id];
+          if(ind.obsStatement){
+            if(r === 'Yes') customLines2.push(ind.obsStatement.met);
+            else if(r === 'No' || r === 'Partial'){ customLines2.push(ind.obsStatement.notMet); gaps.push(ind); }
+            return;
+          }
+          if(r === 'No' || r === 'Partial') gaps.push(ind);
+        });
+        var gapPhrasedLines = gaps.filter(function(ind){ return !ind.obsStatement; })
+          .map(function(ind){ return phraseFinding(ind.text, rmks[ind.id]); });
+        var allLines2 = customLines2.concat(gapPhrasedLines);
+        if(allLines2.length){
+          autoText = allLines2.map(function(line,i){ return (i+1)+'. '+line; }).join('\n');
         }
-        riskVal  = gaps.length ? (gaps.some(function(f){ return resp[f.id]==='No'; }) ? 'H' : 'M') : 'L';
+        riskVal  = gaps.length ? (gaps.some(function(ind){ return resp[ind.id]==='No'; }) ? 'H' : 'M') : 'L';
       }
       obsText  = (ov['text_'+th.id] !== undefined && ov['text_'+th.id].trim() !== '') ? ov['text_'+th.id] : autoText;
       riskVal  = ov['risk_'+th.id] || riskVal;
