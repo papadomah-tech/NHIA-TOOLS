@@ -1838,15 +1838,7 @@ function subscribeRealtime(){
               if(remMod.remarks[iid] && !(locMod.remarks && locMod.remarks[iid]))
                 locMod.remarks[iid] = remMod.remarks[iid];
             });
-            // Same rich captured-data arrays handled in pullFromSheets —
-            // needed here too so live updates carry claims/folder/patient
-            // interview data, not just simple Yes/No responses.
-            ['claims','folders','patients'].forEach(function(key){
-              if(remMod[key]){
-                var result = mergeDataArray(locMod[key], remMod[key]);
-                locMod[key] = result.arr;
-              }
-            });
+            mergeCalcFields(locMod, remMod);
             if(remMod.setting && !locMod.setting) locMod.setting = remMod.setting;
             local.modules[mid] = locMod;
           });
@@ -4791,6 +4783,55 @@ function mergeDataArray(localArr, remoteArr){
   return { arr: merged, changed: changed };
 }
 
+// Generic merge for a module's own calculator data — everything
+// beyond responses/remarks/setting, which are handled separately.
+// Arrays (claims/folders/patients) use the row-by-row merge above;
+// nested objects (licenseCalc, credentialCalc, contractCalc,
+// staffPINCalc, medicineCalc, prescCalc, morbidCalc, m4data, and any
+// future hasXCalc block) get deep-filled recursively. Deliberately
+// generic and keyed off whatever fields actually exist on the remote
+// module rather than a hardcoded list — a hardcoded list is exactly
+// what caused every calculator built after the first one to silently
+// never sync a teammate's saved data onto another device.
+var _CALC_MERGE_SKIP = { responses:1, remarks:1, setting:1 };
+function mergeCalcFields(locMod, remMod){
+  var changed = false;
+  Object.keys(remMod).forEach(function(key){
+    if(_CALC_MERGE_SKIP[key]) return;
+    var remVal = remMod[key];
+    if(remVal === undefined || remVal === null) return;
+    if(Array.isArray(remVal)){
+      var result = mergeDataArray(locMod[key], remVal);
+      if(result.changed){ locMod[key] = result.arr; changed = true; }
+    } else if(typeof remVal === 'object'){
+      if(!locMod[key]) locMod[key] = {};
+      if(deepFillMissing(locMod[key], remVal)) changed = true;
+    }
+  });
+  return changed;
+}
+
+// Recursively fills any key missing/empty on `target` from `source`.
+// Local values always win when both sides have something — this only
+// ever fills genuine gaps, never overwrites an in-progress local edit.
+function deepFillMissing(target, source){
+  var changed = false;
+  Object.keys(source).forEach(function(k){
+    var sv = source[k];
+    if(sv === undefined || sv === null) return;
+    if(Array.isArray(sv)){
+      var result = mergeDataArray(target[k], sv);
+      if(result.changed){ target[k] = result.arr; changed = true; }
+    } else if(typeof sv === 'object'){
+      if(!target[k]) target[k] = {};
+      if(deepFillMissing(target[k], sv)) changed = true;
+    } else if(target[k] === undefined || target[k] === null || target[k] === ''){
+      if(sv !== ''){ target[k] = sv; changed = true; }
+    }
+  });
+  return changed;
+}
+
 async function pullFromSheets(visitId){
   if(!navigator.onLine || !currentUser || !visitId) return;
   try {
@@ -4850,18 +4891,16 @@ async function pullFromSheets(visitId){
           midChanged = true;
         }
       });
-      // Rich captured data (Module 2's claims/folder verification,
-      // Module 7's Patient Exit Interview) lives in these arrays,
-      // entirely separate from the responses/remarks above — without
-      // this, a teammate's actual captured records never appeared on
-      // another device even though simple Yes/No responses did.
-      ['claims','folders','patients'].forEach(function(key){
-        if(remMod[key]){
-          var result = mergeDataArray(locMod[key], remMod[key]);
-          if(result.changed){ locMod[key] = result.arr; midChanged = true; }
-        }
-      });
-      // Module 7's OPD/IPD setting choice
+      // Every custom calculator's own data (Module 2's claims/folders,
+      // Module 7's patient interviews, and every hasXCalc block built
+      // since — license/credential/contract/staff-PIN checks, medicine
+      // stock checks, prescription/morbidity samples, utilisation
+      // figures, etc.) lives in fields beyond responses/remarks/setting.
+      // Merging generically here means a newly built calculator syncs
+      // correctly automatically, without this list needing to be
+      // hand-updated every time — which is exactly what kept happening.
+      if(mergeCalcFields(locMod, remMod)) midChanged = true;
+      // Module 7's OPD/IPD/FPHC setting choice
       if(remMod.setting && !locMod.setting){
         locMod.setting = remMod.setting;
         midChanged = true;
