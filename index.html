@@ -2143,10 +2143,19 @@ async function forceFullRefresh(){
   try {
     await refreshMyProfile(); // re-fetches role/team/team name/assignments
 
-    var visits = await dbGetAll('visits');
+    var visitIds = (await dbGetAll('visits')).map(function(v){ return v.id; });
     var pushed = 0;
-    for(var i=0; i<visits.length; i++){
-      var visit = visits[i];
+    for(var i=0; i<visitIds.length; i++){
+      // Pull first. The server does a whole-module replace, not a
+      // deep field-by-field merge — pushing an incomplete local copy
+      // (e.g. one that predates a merge-logic fix, or simply hasn't
+      // caught up with a teammate's later edit) would silently
+      // overwrite more-complete data already on the server. Pulling
+      // immediately before pushing ensures this device's copy is as
+      // complete as it can be before it's used to push anything.
+      try { await pullFromSheets(visitIds[i]); } catch(e){ console.warn('[Refresh] pre-push pull failed for', visitIds[i], e.message); }
+      var visit = await dbGet('visits', visitIds[i]);
+      if(!visit) continue;
       try {
         var payload = buildSyncPayload(visit, null); // null = send everything this device knows, not just dirty modules
         var { error: sbErr } = await sb.rpc('merge_visit_modules', {
@@ -2170,9 +2179,11 @@ async function forceFullRefresh(){
       } catch(e){ console.warn('[Refresh] push failed for', visit.id, e.message); }
     }
 
-    var doVisits = await dbGetAll('do_visits');
-    for(var k=0; k<doVisits.length; k++){
-      var doVisit = doVisits[k];
+    var doVisitIds = (await dbGetAll('do_visits')).map(function(v){ return v.id; });
+    for(var k=0; k<doVisitIds.length; k++){
+      try { await pullDOFromSheets(doVisitIds[k]); } catch(e){ console.warn('[Refresh] pre-push pull failed for', doVisitIds[k], e.message); }
+      var doVisit = await doDbGet(doVisitIds[k]);
+      if(!doVisit) continue;
       try {
         var doPayload = buildDOSyncPayload(doVisit, null);
         var { error: doErr } = await sb.rpc('merge_visit_modules', {
