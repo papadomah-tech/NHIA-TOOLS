@@ -4408,6 +4408,22 @@ var OBS_THEMATIC = [
 // .patients array instead. This derives the same kind of "findings"
 // list (problem + context) from that data, so M7 issues actually
 // surface on the Observation Sheet instead of always showing empty.
+// Lowercases only the first letter of a phrase when it's safe to —
+// skips it entirely when the first word looks like an acronym or
+// stylized capitalization (NHIA, HeFRA, OPD, FPHC, PIN...), which a
+// blind "lowercase the first character" turns into "nHIA"/"hEFRA".
+// Heuristic: 2+ uppercase letters in the first word means leave it
+// alone; a normal Title-case word (just one leading capital) gets
+// lowercased for the mid-sentence flow.
+function smartLowerFirst(s){
+  var firstWordMatch = s.match(/^\S+/);
+  if(firstWordMatch){
+    var upperCount = (firstWordMatch[0].match(/[A-Z]/g) || []).length;
+    if(upperCount >= 2) return s;
+  }
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
+
 // Derives a short "topic" from a full indicator question, for use in
 // natural-language findings text. Most indicators follow a "MAIN
 // QUESTION — CLARIFYING DETAIL" pattern, so splitting on the first
@@ -4426,18 +4442,18 @@ function briefTopic(text){
 }
 
 // Turns a raw {indicator text, remark} pair into a natural-language
-// statement instead of "question text — remark". Best-effort: the
-// topic is lowercased at the start since most indicator text begins
-// with a capital letter, which won't always read perfectly
-// grammatically for every indicator but is far more readable than
-// restating the full question verbatim in every case.
+// statement instead of "question text — remark". With a remark, leads
+// with the topic and the officer's own note. Without one, states the
+// expected condition itself — most indicator text is already phrased
+// as an assertion of what should be true (e.g. "NHIA credential is
+// current — not expired"), so reusing that wording directly is more
+// useful to a reader than a generic "ask the officer" deflection.
 function phraseFinding(indText, remark){
   var topic = briefTopic(indText);
-  var topicLower = topic.charAt(0).toLowerCase() + topic.slice(1);
   if(remark && remark.trim()){
-    return 'Regarding ' + topicLower + ', officer noted: ' + remark.trim();
+    return 'Regarding ' + smartLowerFirst(topic) + ', officer noted: ' + remark.trim();
   }
-  return 'Gap noted regarding ' + topicLower + ' — see officer for detail.';
+  return 'Expected: ' + indText.trim() + '. This was not confirmed as met during the visit.';
 }
 
 // The statement shown for a thematic area with zero findings, instead
