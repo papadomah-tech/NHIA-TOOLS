@@ -4561,7 +4561,8 @@ function buildObsFindingsList(obs){
     var autoText = findings.length
       ? findings.map(function(f,i){ return (i+1)+'. '+phraseFinding(f.text, f.remark); }).join('\n')
       : cleanModuleStatement(th.label);
-    var savedText = obsOverrides['text_'+th.id] !== undefined ? obsOverrides['text_'+th.id] : autoText;
+    var overrideVal = obsOverrides['text_'+th.id];
+    var savedText = (overrideVal !== undefined && overrideVal.trim() !== '') ? overrideVal : autoText;
     var savedRisk = obsOverrides['risk_'+th.id] || (findings.length ? (findings.some(function(f){return f.response==='No';}) ? 'H' : 'M') : '');
 
     html += '<div style="border-bottom:1px solid var(--border);padding:14px 16px">'
@@ -4715,7 +4716,7 @@ async function buildObsPrintHtml(){
       var autoText7 = peiFindings.length
         ? peiFindings.map(function(f,i){ return (i+1)+'. '+phraseFinding(f.text, f.remark); }).join('\n')
         : cleanModuleStatement(th.label);
-      obsText = ov['text_m7'] !== undefined ? ov['text_m7'] : autoText7;
+      obsText = (ov['text_m7'] !== undefined && ov['text_m7'].trim() !== '') ? ov['text_m7'] : autoText7;
       riskVal = ov['risk_m7'] || (peiFindings.length ? 'H' : 'L');
     } else if(th.id){
       var mData = mod[th.id] || {};
@@ -4731,7 +4732,7 @@ async function buildObsPrintHtml(){
         }
         riskVal  = gaps.length ? (gaps.some(function(f){ return resp[f.id]==='No'; }) ? 'H' : 'M') : 'L';
       }
-      obsText  = ov['text_'+th.id] !== undefined ? ov['text_'+th.id] : autoText;
+      obsText  = (ov['text_'+th.id] !== undefined && ov['text_'+th.id].trim() !== '') ? ov['text_'+th.id] : autoText;
       riskVal  = ov['risk_'+th.id] || riskVal;
     } else if(th.no===8){
       obsText  = ov['text_m_abuse'] !== undefined ? ov['text_m_abuse'] : (obs.abuseWaste||'');
