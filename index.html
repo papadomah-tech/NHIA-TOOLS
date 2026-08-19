@@ -962,8 +962,8 @@ html,body{height:100%;overflow:hidden}
 <div class="screen hidden" id="screen-setup">
   <div class="topbar">
     <div class="topbar-back" onclick="goBack()">←</div>
-    <div><div class="topbar-title">New Visit</div><div class="topbar-sub">Provider & Team Details</div></div>
-    <button class="topbar-action" onclick="saveSetup()">Next →</button>
+    <div><div class="topbar-title" id="setup-screen-title">New Visit</div><div class="topbar-sub" id="setup-screen-sub">Provider & Team Details</div></div>
+    <button class="topbar-action" id="setup-submit-btn" onclick="saveSetup()">Next →</button>
   </div>
   <div class="scroll" style="padding-top:16px">
     <div class="section-divider"><h3>Visit Identification</h3></div>
@@ -1259,8 +1259,8 @@ html,body{height:100%;overflow:hidden}
 <div class="screen hidden" id="screen-do-setup">
   <div class="topbar">
     <div class="topbar-back" onclick="goHome()">⌂</div>
-    <div><div class="topbar-title">District Office Visit</div><div class="topbar-sub">Visit Details</div></div>
-    <button class="topbar-action" onclick="saveDOSetup()">Next →</button>
+    <div><div class="topbar-title" id="do-setup-screen-title">District Office Visit</div><div class="topbar-sub" id="do-setup-screen-sub">Visit Details</div></div>
+    <button class="topbar-action" id="do-setup-submit-btn" onclick="saveDOSetup()">Next →</button>
   </div>
   <div class="scroll" style="padding-top:16px">
     <div class="section-divider"><h3>Visit Identification</h3></div>
@@ -5274,6 +5274,7 @@ async function renderAssignmentVisits(){
         var buttons = a.status==='open'
           ? '<div style="display:flex;flex-direction:column;gap:4px">'
             + '<button data-vid="' + v.id + '" data-act="open" style="background:rgba(34,181,115,.1);border:1px solid rgba(34,181,115,.3);border-radius:8px;padding:5px 10px;color:var(--accent2);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Open</button>'
+            + '<button data-vid="' + v.id + '" data-act="edit-setup" style="background:rgba(212,172,13,.1);border:1px solid rgba(212,172,13,.3);border-radius:8px;padding:5px 10px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#9998; Edit Setup</button>'
             + (!vClosed ? '<button data-vid="' + v.id + '" data-act="close" style="background:rgba(224,80,80,.1);border:1px solid rgba(224,80,80,.3);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>' : '')
             + (canDelete ? '<button data-vid="' + v.id + '" data-act="delete" style="background:transparent;border:1px solid rgba(224,80,80,.2);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#128465; Delete</button>' : '')
             + '</div>'
@@ -5294,6 +5295,7 @@ async function renderAssignmentVisits(){
       var vid = btn.getAttribute('data-vid');
       var act = btn.getAttribute('data-act');
       if(act==='open') openVisit(vid);
+      else if(act==='edit-setup') editFacilityVisitSetup(vid);
       else if(act==='close') closeVisit(vid);
       else if(act==='delete') deleteVisit(vid, true);
     };
@@ -5312,7 +5314,8 @@ async function renderAssignmentVisits(){
           + (doClosed
             ? '<div style="font-size:10px;color:var(--accent2);font-weight:700">&#10003; Closed</div>'
             : (a.status==='open'
-              ? '<div style="display:flex;gap:4px"><button data-dovid="' + doVisit.id + '" data-act="close-do" style="background:rgba(224,80,80,.1);border:1px solid rgba(224,80,80,.3);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>'
+              ? '<div style="display:flex;gap:4px"><button data-dovid="' + doVisit.id + '" data-act="edit-do-setup" style="background:rgba(212,172,13,.1);border:1px solid rgba(212,172,13,.3);border-radius:8px;padding:5px 10px;color:var(--gold);font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#9998;</button>'
+                + '<button data-dovid="' + doVisit.id + '" data-act="close-do" style="background:rgba(224,80,80,.1);border:1px solid rgba(224,80,80,.3);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">Close</button>'
                 + (userRole!=='member' ? '<button data-dovid="' + doVisit.id + '" data-act="delete-do" style="background:transparent;border:1px solid rgba(224,80,80,.2);border-radius:8px;padding:5px 10px;color:#e05050;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">&#128465;</button>' : '') + '</div>'
               : '<div style="font-size:10px;color:var(--muted)">Open</div>'))
           + '</div>';
@@ -5322,6 +5325,7 @@ async function renderAssignmentVisits(){
           var act = btn.getAttribute('data-act');
           if(act==='open-do') openDOVisit(btn.getAttribute('data-dovid'));
           else if(act==='close-do') closeDOVisit(btn.getAttribute('data-dovid'));
+          else if(act==='edit-do-setup') editDOVisitSetup(btn.getAttribute('data-dovid'));
           else if(act==='delete-do') deleteDOVisit(btn.getAttribute('data-dovid'), true);
         };
       }
@@ -5380,6 +5384,34 @@ function addFacilityVisit(){
   if(reg) reg.value = currentAssignment.region || settings.defaultRegion || '';
   if(dat) dat.value = new Date().toISOString().slice(0,10);
   if(off) off.value = currentAssignment.district || '';
+  document.getElementById('setup-screen-title').textContent = 'New Visit';
+  document.getElementById('setup-screen-sub').textContent = 'Provider & Team Details';
+  document.getElementById('setup-submit-btn').textContent = 'Next →';
+  showScreen('setup');
+}
+
+// Any team member can edit a facility visit's setup after it's been
+// saved — loads the existing visit and pre-fills every field so the
+// same saveSetup() flow works for both create and update.
+async function editFacilityVisitSetup(visitId){
+  if(!db){ try{ db=await openDB(); }catch(e){ db=null; } }
+  var v = db ? await dbGet('visits', visitId) : null;
+  if(!v){ showToast('Visit not found','error'); return; }
+  currentVisit = v;
+  var s = v.setup || {};
+  var fieldMap = {
+    'f-date': s.date, 'f-visit-type': s.visitType, 'f-region': s.region, 'f-office': s.office,
+    'f-name': s.providerName, 'f-code': s.providerCode, 'f-type': s.providerType, 'f-ownership': s.ownership,
+    'f-acc-status': s.accStatus, 'f-acc-expiry': s.accExpiry, 'f-address': s.address, 'f-gps': s.gps,
+    'f-monitor': s.leadMonitor, 'f-member2': s.member2, 'f-member3': s.member3,
+  };
+  Object.keys(fieldMap).forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.value = fieldMap[id] || '';
+  });
+  document.getElementById('setup-screen-title').textContent = 'Edit Facility Visit';
+  document.getElementById('setup-screen-sub').textContent = s.providerName || 'Update provider details';
+  document.getElementById('setup-submit-btn').textContent = 'Save Changes';
   showScreen('setup');
 }
 
@@ -8044,6 +8076,7 @@ async function openDOVisit(id){
 var _pendingDOAssignmentId = null;
 
 async function startDOVisit(assignmentId){
+  currentDOVisit = null;
   _pendingDOAssignmentId = assignmentId || null;
   // Pre-fill defaults from settings
   const dm = document.getElementById('do-monitor');
@@ -8052,6 +8085,32 @@ async function startDOVisit(assignmentId){
   if(dr) dr.value = settings.defaultRegion||'';
   const dd = document.getElementById('do-date');
   if(dd) dd.value = new Date().toISOString().slice(0,10);
+  document.getElementById('do-setup-screen-title').textContent = 'District Office Visit';
+  document.getElementById('do-setup-screen-sub').textContent = 'Visit Details';
+  document.getElementById('do-setup-submit-btn').textContent = 'Next →';
+  showScreen('do-setup');
+}
+
+// Any team member can edit a District Office visit's setup after it's
+// been saved — same pattern as editFacilityVisitSetup.
+async function editDOVisitSetup(doVisitId){
+  var v = await doDbGet(doVisitId);
+  if(!v){ showToast('District Office visit not found','error'); return; }
+  currentDOVisit = v;
+  var s = v.setup || {};
+  var fieldMap = {
+    'do-date': s.date, 'do-visit-type': s.visitType, 'do-region': s.region,
+    'do-district': s.district, 'do-office': s.office,
+    'do-dm-name': s.dmName, 'do-pr-name': s.prName, 'do-mis-name': s.misName, 'do-acc-name': s.accName,
+    'do-monitor': s.leadMonitor, 'do-member2': s.member2, 'do-member3': s.member3,
+  };
+  Object.keys(fieldMap).forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.value = fieldMap[id] || '';
+  });
+  document.getElementById('do-setup-screen-title').textContent = 'Edit District Office Visit';
+  document.getElementById('do-setup-screen-sub').textContent = s.district || 'Update visit details';
+  document.getElementById('do-setup-submit-btn').textContent = 'Save Changes';
   showScreen('do-setup');
 }
 
@@ -8059,24 +8118,31 @@ async function saveDOSetup(){
   const date = document.getElementById('do-date').value;
   const dist = document.getElementById('do-district').value.trim();
   if(!date||!dist){ showToast('Please fill Date and District','error'); return; }
-  currentDOVisit = {
-    id: 'do_'+Date.now(), createdAt: Date.now(),
-    setup:{
-      date, visitType: document.getElementById('do-visit-type').value,
-      region: document.getElementById('do-region').value,
-      district: document.getElementById('do-district').value.trim(),
-      office: document.getElementById('do-office').value.trim(),
-      dmName:  document.getElementById('do-dm-name').value.trim(),
-      prName:  document.getElementById('do-pr-name').value.trim(),
+  var setupData = {
+    date, visitType: document.getElementById('do-visit-type').value,
+    region: document.getElementById('do-region').value,
+    district: document.getElementById('do-district').value.trim(),
+    office: document.getElementById('do-office').value.trim(),
+    dmName:  document.getElementById('do-dm-name').value.trim(),
+    prName:  document.getElementById('do-pr-name').value.trim(),
     misName: document.getElementById('do-mis-name').value.trim(),
-      accName: document.getElementById('do-acc-name').value.trim(),
-      leadMonitor: document.getElementById('do-monitor').value.trim(),
-      member2: document.getElementById('do-member2').value.trim(),
-      member3: document.getElementById('do-member3').value.trim(),
-    },
-    sections:{},
-    assignmentId: _pendingDOAssignmentId || null,
+    accName: document.getElementById('do-acc-name').value.trim(),
+    leadMonitor: document.getElementById('do-monitor').value.trim(),
+    member2: document.getElementById('do-member2').value.trim(),
+    member3: document.getElementById('do-member3').value.trim(),
   };
+  if(currentDOVisit && currentDOVisit.id){
+    // Editing an existing DO visit — update setup in place, preserving
+    // its id, sections (module data already captured), and links.
+    currentDOVisit.setup = setupData;
+  } else {
+    currentDOVisit = {
+      id: 'do_'+Date.now(), createdAt: Date.now(),
+      setup: setupData,
+      sections:{},
+      assignmentId: _pendingDOAssignmentId || null,
+    };
+  }
   currentDOVisit.lastModified = Date.now();
   await doDbPut(currentDOVisit);
   // Register with parent assignment so it shows under the assignment,
