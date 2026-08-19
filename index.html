@@ -1848,6 +1848,10 @@ function subscribeRealtime(){
               var scr = screenStack[screenStack.length-1];
               if(scr==='modules') showModules();
               else if(scr==='dashboard') showDashboard();
+              else if(scr==='module' && currentModuleId){
+                var openMod2 = MODULES.find(function(x){ return x.id === currentModuleId; });
+                if(openMod2) renderModuleContent(openMod2);
+              }
             }
             renderHomeVisits();
             showSyncPulse();
@@ -4928,6 +4932,16 @@ async function pullFromSheets(visitId){
         var scr = screenStack[screenStack.length-1];
         if(scr==='modules'){ showModules(); updateModuleNavScore(); }
         else if(scr==='dashboard') showDashboard();
+        else if(scr==='module' && currentModuleId){
+          // The user is actively inside a specific module (e.g. viewing
+          // Module 4's staffing headcount) when a background sync
+          // updates its data. Without this, the merge correctly lands
+          // in storage but the visible screen stays stale until the
+          // person leaves and re-enters — which reads exactly like
+          // "the data isn't there" even though it already is.
+          var openMod = MODULES.find(function(x){ return x.id === currentModuleId; });
+          if(openMod) renderModuleContent(openMod);
+        }
       }
       renderHomeVisits();
       showSyncPulse();
