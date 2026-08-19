@@ -4472,6 +4472,44 @@ var OBS_THEMATIC = [
 // .patients array instead. This derives the same kind of "findings"
 // list (problem + context) from that data, so M7 issues actually
 // surface on the Observation Sheet instead of always showing empty.
+// Derives a short "topic" from a full indicator question, for use in
+// natural-language findings text. Most indicators follow a "MAIN
+// QUESTION — CLARIFYING DETAIL" pattern, so splitting on the first
+// spaced em-dash usually gives a reasonably short, meaningful topic;
+// falls back to the first semicolon, then a plain truncation, since
+// authoring a hand-written short label for every indicator across the
+// whole app isn't practical.
+function briefTopic(text){
+  if(!text) return 'this item';
+  var t = text.trim();
+  var dashIdx = t.indexOf(' — ');
+  if(dashIdx > 10) return t.slice(0, dashIdx).trim();
+  var semiIdx = t.indexOf('; ');
+  if(semiIdx > 10) return t.slice(0, semiIdx).trim();
+  return t.length > 70 ? t.slice(0,70).trim()+'…' : t;
+}
+
+// Turns a raw {indicator text, remark} pair into a natural-language
+// statement instead of "question text — remark". Best-effort: the
+// topic is lowercased at the start since most indicator text begins
+// with a capital letter, which won't always read perfectly
+// grammatically for every indicator but is far more readable than
+// restating the full question verbatim in every case.
+function phraseFinding(indText, remark){
+  var topic = briefTopic(indText);
+  var topicLower = topic.charAt(0).toLowerCase() + topic.slice(1);
+  if(remark && remark.trim()){
+    return 'Regarding ' + topicLower + ', officer noted: ' + remark.trim();
+  }
+  return 'Gap noted regarding ' + topicLower + ' — see officer for detail.';
+}
+
+// The statement shown for a thematic area with zero findings, instead
+// of leaving the observation sheet blank for that section.
+function cleanModuleStatement(label){
+  return 'No significant gaps identified in ' + label + ' during this visit.';
+}
+
 function extractPEIFindings(m7Data){
   var patients = (m7Data && m7Data.patients) || [];
   var setting = m7Data && m7Data.setting;
@@ -4521,8 +4559,8 @@ function buildObsFindingsList(obs){
 
     // Build finding text — auto from responses + manual override
     var autoText = findings.length
-      ? findings.map(function(f,i){ return (i+1)+'. '+f.text+(f.remark?' — '+f.remark:''); }).join('\n')
-      : '';
+      ? findings.map(function(f,i){ return (i+1)+'. '+phraseFinding(f.text, f.remark); }).join('\n')
+      : cleanModuleStatement(th.label);
     var savedText = obsOverrides['text_'+th.id] !== undefined ? obsOverrides['text_'+th.id] : autoText;
     var savedRisk = obsOverrides['risk_'+th.id] || (findings.length ? (findings.some(function(f){return f.response==='No';}) ? 'H' : 'M') : '');
 
@@ -4674,7 +4712,9 @@ async function buildObsPrintHtml(){
     if(th.id === 'm7'){
       var m7Data = mod.m7 || {};
       var peiFindings = extractPEIFindings(m7Data);
-      var autoText7 = peiFindings.map(function(f,i){ return (i+1)+'. '+f.text+(f.remark?' — '+f.remark:''); }).join('\n');
+      var autoText7 = peiFindings.length
+        ? peiFindings.map(function(f,i){ return (i+1)+'. '+phraseFinding(f.text, f.remark); }).join('\n')
+        : cleanModuleStatement(th.label);
       obsText = ov['text_m7'] !== undefined ? ov['text_m7'] : autoText7;
       riskVal = ov['risk_m7'] || (peiFindings.length ? 'H' : 'L');
     } else if(th.id){
@@ -4682,11 +4722,13 @@ async function buildObsPrintHtml(){
       var resp  = mData.responses || {};
       var rmks  = mData.remarks   || {};
       var mDef  = MODULES.find(function(m){ return m.id===th.id; });
-      var autoText = '';
+      var autoText = cleanModuleStatement(th.label);
       if(mDef){
         var inds = mDef.indicators || (mDef.sections ? mDef.sections.flatMap(function(sec){ return sec.items; }) : []);
         var gaps = inds.filter(function(ind){ return resp[ind.id]==='No'||resp[ind.id]==='Partial'; });
-        autoText = gaps.map(function(f,i){ return (i+1)+'. '+f.text+(rmks[f.id]?' — '+rmks[f.id]:''); }).join('\n');
+        if(gaps.length){
+          autoText = gaps.map(function(f,i){ return (i+1)+'. '+phraseFinding(f.text, rmks[f.id]); }).join('\n');
+        }
         riskVal  = gaps.length ? (gaps.some(function(f){ return resp[f.id]==='No'; }) ? 'H' : 'M') : 'L';
       }
       obsText  = ov['text_'+th.id] !== undefined ? ov['text_'+th.id] : autoText;
