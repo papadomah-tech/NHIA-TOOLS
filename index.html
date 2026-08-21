@@ -4613,6 +4613,20 @@ function loadHtml2Pdf(){
 async function shareObsSheetPDF(){
   if(!currentVisit){ showToast('No visit open','error'); return; }
   saveObsSheet();
+
+  // iOS Safari requires navigator.share() to still be within the
+  // click's "user activation" window — PDF generation below easily
+  // takes a few seconds (html2canvas is not fast), which is long
+  // enough for iOS to consider that activation expired and reject the
+  // share() call with a NotAllowedError. Android/desktop are far more
+  // lenient about this same delay. Opening a blank tab SYNCHRONOUSLY
+  // right now, before any async work, and filling it in once the PDF
+  // is ready sidesteps this — iOS renders PDFs in its own viewer,
+  // which has its own native Share button, so the end result is the
+  // same without depending on a fragile activation window.
+  var isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  var preOpenedTab = isIOS ? window.open('', '_blank') : null;
+
   showToast('Preparing PDF…','');
   var container = null;
   try {
@@ -4640,13 +4654,42 @@ async function shareObsSheetPDF(){
     document.body.removeChild(container);
     container = null;
 
+    var url = URL.createObjectURL(pdfBlob);
+
+    if(isIOS){
+      if(preOpenedTab && !preOpenedTab.closed){
+        preOpenedTab.location.href = url;
+        showToast('Opened — tap the Share icon in the PDF viewer to send it','success');
+      } else {
+        // Pop-up was blocked even though it was opened synchronously —
+        // fall back to a plain download rather than a dead end.
+        var aIOS = document.createElement('a');
+        aIOS.href = url; aIOS.download = fileName;
+        document.body.appendChild(aIOS); aIOS.click(); document.body.removeChild(aIOS);
+        showToast('Allow pop-ups for this site, then try again — or check Downloads','error');
+      }
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
+      return;
+    }
+
     var pdfFile = new File([pdfBlob], fileName, { type: 'application/pdf' });
 
     if(navigator.canShare && navigator.canShare({ files: [pdfFile] })){
-      await navigator.share({ files: [pdfFile], title: 'Observation Sheet — ' + facilityName });
-      showToast('Shared','success');
+      try {
+        await navigator.share({ files: [pdfFile], title: 'Observation Sheet — ' + facilityName });
+        showToast('Shared','success');
+      } catch(shareErr){
+        if(shareErr && shareErr.name === 'AbortError') return; // user cancelled — not an error
+        // Defensive fallback: share() rejected despite canShare()
+        // saying yes (same NotAllowedError pattern, or anything else)
+        // — download instead of a hard failure.
+        var aFallback = document.createElement('a');
+        aFallback.href = url; aFallback.download = fileName;
+        document.body.appendChild(aFallback); aFallback.click(); document.body.removeChild(aFallback);
+        showToast("Sharing wasn't available — PDF downloaded instead",'success');
+      }
+      setTimeout(function(){ URL.revokeObjectURL(url); }, 10000);
     } else {
-      var url = URL.createObjectURL(pdfBlob);
       var a = document.createElement('a');
       a.href = url; a.download = fileName;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
@@ -4654,6 +4697,7 @@ async function shareObsSheetPDF(){
       showToast('PDF downloaded — share it from your Downloads/Files app','success');
     }
   } catch(e){
+    if(preOpenedTab && !preOpenedTab.closed){ try{ preOpenedTab.close(); }catch(_){} }
     if(container && container.parentNode) document.body.removeChild(container);
     if(e && e.name === 'AbortError') return; // user cancelled the native share sheet — not an error
     console.warn('[PDF Share] failed:', e);
